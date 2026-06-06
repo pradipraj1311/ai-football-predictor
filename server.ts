@@ -11,135 +11,94 @@ const PORT = 3000;
 
 function getGeminiClient(): GoogleGenAI {
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey === "MY_GEMINI_API_KEY" || apiKey.trim() === "") {
-    throw new Error('GEMINI_API_KEY is not configured in environment variables.');
+  if (!apiKey || apiKey.trim() === "") {
+    throw new Error('GEMINI_API_KEY is missing.');
   }
   return new GoogleGenAI({ apiKey });
 }
 
+let matchCache: { data: any; timestamp: number } | null = null;
+const CACHE_DURATION = 5 * 60 * 1000; 
+
+app.get('/api/live-matches', async (req, res) => {
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Content-Type': 'application/json'
+  };
+
+  if (matchCache && (Date.now() - matchCache.timestamp < CACHE_DURATION)) {
+    return res.status(200).set(corsHeaders).json({ matches: matchCache.data, cached: true });
+  }
+
+  // GLOBAL TOURNAMENTS: Premier League, Champions League, La Liga
+  const globalMatches = [
+    {
+      id: 'live-1', competition: 'UEFA Champions League', status: 'LIVE', minute: 72, time: '20:00', date: '2026-06-06',
+      homeScore: 2, awayScore: 2, homeTeam: { id: 'rma', name: 'Real Madrid', code: 'RMA', logo: '👑', form: ['W', 'W', 'D'] },
+      awayTeam: { id: 'mci', name: 'Manchester City', code: 'MCI', logo: '🔵', form: ['W', 'W', 'W'] }
+    },
+    {
+      id: 'live-2', competition: 'Premier League', status: 'LIVE', minute: 18, time: '15:00', date: '2026-06-06',
+      homeScore: 1, awayScore: 0, homeTeam: { id: 'ars', name: 'Arsenal', code: 'ARS', logo: '🔴', form: ['W', 'D', 'W'] },
+      awayTeam: { id: 'liv', name: 'Liverpool', code: 'LIV', logo: '🦅', form: ['L', 'W', 'W'] }
+    },
+    {
+      id: 'live-3', competition: 'La Liga', status: 'UPCOMING', time: '21:00', date: '2026-06-06',
+      homeTeam: { id: 'bar', name: 'Barcelona', code: 'BAR', logo: '🔵', form: ['W', 'W', 'W'] },
+      awayTeam: { id: 'atm', name: 'Atletico Madrid', code: 'ATM', logo: '⚪', form: ['D', 'W', 'L'] }
+    }
+  ];
+
+  // For testing, we will bypass the /general/sports endpoint and feed the global matches directly 
+  // until we map the exact live /events endpoint from SofaScore.
+  matchCache = { data: globalMatches, timestamp: Date.now() };
+  res.status(200).set(corsHeaders).json({ matches: globalMatches, cached: false });
+});
+
 app.post('/api/predict', async (req, res) => {
   try {
     const { match } = req.body;
-    if (!match) {
-      res.status(400).json({ error: 'Match data is required.' });
-      return;
-    }
+    const ai = getGeminiClient();
 
-    let ai;
-    try {
-      ai = getGeminiClient();
-    } catch {
-      res.json({
-        isMock: true,
-        prediction: {
-          matchId: match.id,
-          winProbability: { home: 45, draw: 30, away: 25 },
-          suggestedScore: "2-1",
-          analysis: "Configure your GEMINI_API_KEY as a secret to activate state-of-the-art predictive intelligence.",
-          keyMatchups: ["Tactical battle across default layouts"],
-          tacticalInsight: "This is a simulated analytics frame preview."
-        }
-      });
-      return;
-    }
+    const prompt = `You are an elite football tactical analyst. Analyze this current match context:
+    Competition: ${match.competition}
+    Home Team: ${match.homeTeam.name} (Current Score: ${match.homeScore ?? 0})
+    Away Team: ${match.awayTeam.name} (Current Score: ${match.awayScore ?? 0})
+    Match Status: ${match.status} (Minute: ${match.minute ?? 'N/A'})
 
-    const prompt = `Classify tactical battles for this tournament match:
-    Home: ${match.homeTeam.name}, Away: ${match.awayTeam.name}. Status: ${match.status}.
-    Provide realistic outcome prediction percentage odds, a suggested score, and tactical insight in exact JSON format.`;
+    Generate a highly realistic win probability split adding up to 100%, a projected final scoreline string, a sharp tactical evaluation, and a best 4-player fantasy roster recommendation from these teams.
+    Respond strictly with a valid JSON object matching this schema structure:
+    {
+      "winProbability": { "home": 50, "draw": 25, "away": 25 },
+      "suggestedScore": "2-1",
+      "analysis": "Detailed tactical analysis paragraph goes here.",
+      "advisor": {
+        "captain": "Name of best player",
+        "viceCaptain": "Name of second best player",
+        "bestXI": [
+          {"name": "Player 1", "team": "${match.homeTeam.name}", "rating": 8.9, "reason": "Reasoning"},
+          {"name": "Player 2", "team": "${match.awayTeam.name}", "rating": 8.4, "reason": "Reasoning"}
+        ]
+      }
+    }`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-3.5-flash',
       contents: prompt,
       config: {
-        tools: [{ googleSearch: {} }],
         responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          required: ['winProbability', 'suggestedScore', 'analysis', 'keyMatchups', 'tacticalInsight'],
-          properties: {
-            winProbability: {
-              type: Type.OBJECT,
-              required: ['home', 'draw', 'away'],
-              properties: {
-                home: { type: Type.INTEGER },
-                draw: { type: Type.INTEGER },
-                away: { type: Type.INTEGER },
-              }
-            },
-            suggestedScore: { type: Type.STRING },
-            analysis: { type: Type.STRING },
-            keyMatchups: { type: Type.ARRAY, items: { type: Type.STRING } },
-            tacticalInsight: { type: Type.STRING }
-          }
-        }
       }
     });
 
-    const prediction = JSON.parse(response.text || '{}');
-    const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
-    const sources = groundingChunks?.map((chunk: any) => ({
-      title: chunk.web?.title || 'Web Context',
-      uri: chunk.web?.uri || '#'
-    })).filter((src: any) => src.uri !== '#').slice(0, 4);
-
-    res.json({ isMock: false, prediction, sources });
+    const parsedData = JSON.parse(response.text || '{}');
+    res.json({ prediction: parsedData });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failure', details: error.message });
-  }
-});
-
-app.post('/api/fantasy-advisor', async (req, res) => {
-  try {
-    const { match } = req.body;
-    let ai;
-    try {
-      ai = getGeminiClient();
-    } catch {
-      res.json({
-        isMock: true,
-        advisor: {
-          bestXI: [{ name: "Star Forward", position: "FWD", team: match.homeTeam.name, role: "Target Man", rating: 9.2, reason: "Excellent form." }],
-          captain: "Star Forward",
-          viceCaptain: "Solid Mid"
-        }
-      });
-      return;
-    }
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
-      contents: `Propose best fantasy squad of 4 composite starters from ${match.homeTeam.name} and ${match.awayTeam.name}.`,
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          required: ['bestXI', 'captain', 'viceCaptain'],
-          properties: {
-            bestXI: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                required: ['name', 'position', 'team', 'role', 'rating', 'reason'],
-                properties: {
-                  name: { type: Type.STRING },
-                  position: { type: Type.STRING },
-                  team: { type: Type.STRING },
-                  role: { type: Type.STRING },
-                  rating: { type: Type.NUMBER },
-                  reason: { type: Type.STRING }
-                }
-              }
-            },
-            captain: { type: Type.STRING },
-            viceCaptain: { type: Type.STRING }
-          }
-        }
-      }
+    // Return a safe error structure so the frontend doesn't crash
+    console.error("Gemini Error:", error.message);
+    res.status(500).json({ 
+      error: 'Gemini Analysis Failed', 
+      details: error.message 
     });
-
-    res.json({ isMock: false, advisor: JSON.parse(response.text || '{}') });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
   }
 });
 
