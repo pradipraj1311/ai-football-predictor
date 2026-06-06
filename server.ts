@@ -18,7 +18,7 @@ function getGeminiClient(): GoogleGenAI {
 }
 
 let matchCache: { data: any; timestamp: number } | null = null;
-const CACHE_DURATION = 5 * 60 * 1000; 
+const CACHE_DURATION = 5 * 60 * 1000;
 
 app.get('/api/live-matches', async (req, res) => {
   const corsHeaders = {
@@ -30,34 +30,127 @@ app.get('/api/live-matches', async (req, res) => {
     return res.status(200).set(corsHeaders).json({ matches: matchCache.data, cached: true });
   }
 
-  // GLOBAL TOURNAMENTS: Premier League, Champions League, La Liga
-  const globalMatches = [
+  // 2. Fail-Safe: Used if API limits are hit OR if zero matches are live globally at this exact minute
+  const fallbackMatches = [
     {
-      id: 'live-1', competition: 'UEFA Champions League', status: 'LIVE', minute: 72, time: '20:00', date: '2026-06-06',
+      id: 'live-1', competition: 'UEFA Champions League', status: 'LIVE', minute: 72, time: '20:00', date: new Date().toISOString().split('T')[0],
       homeScore: 2, awayScore: 2, homeTeam: { id: 'rma', name: 'Real Madrid', code: 'RMA', logo: '👑', form: ['W', 'W', 'D'] },
       awayTeam: { id: 'mci', name: 'Manchester City', code: 'MCI', logo: '🔵', form: ['W', 'W', 'W'] }
     },
     {
-      id: 'live-2', competition: 'Premier League', status: 'LIVE', minute: 18, time: '15:00', date: '2026-06-06',
+      id: 'live-2', competition: 'Premier League', status: 'LIVE', minute: 18, time: '15:00', date: new Date().toISOString().split('T')[0],
       homeScore: 1, awayScore: 0, homeTeam: { id: 'ars', name: 'Arsenal', code: 'ARS', logo: '🔴', form: ['W', 'D', 'W'] },
       awayTeam: { id: 'liv', name: 'Liverpool', code: 'LIV', logo: '🦅', form: ['L', 'W', 'W'] }
-    },
-    {
-      id: 'live-3', competition: 'La Liga', status: 'UPCOMING', time: '21:00', date: '2026-06-06',
-      homeTeam: { id: 'bar', name: 'Barcelona', code: 'BAR', logo: '🔵', form: ['W', 'W', 'W'] },
-      awayTeam: { id: 'atm', name: 'Atletico Madrid', code: 'ATM', logo: '⚪', form: ['D', 'W', 'L'] }
     }
   ];
 
-  // For testing, we will bypass the /general/sports endpoint and feed the global matches directly 
-  // until we map the exact live /events endpoint from SofaScore.
-  matchCache = { data: globalMatches, timestamp: Date.now() };
-  res.status(200).set(corsHeaders).json({ matches: globalMatches, cached: false });
+  // 3. Target the Live Events endpoint
+  const sofaUrl = 'https://sofascore6.p.rapidapi.com/api/sofascore/v1/events/live';
+  const sofaOptions = {
+    method: 'GET',
+    headers: {
+      'X-RapidAPI-Key': process.env.RAPID_API_KEY || '',
+      'X-RapidAPI-Host': 'sofascore6.p.rapidapi.com'
+    }
+  };
+
+  try {
+    const sofaResponse = await fetch(sofaUrl, sofaOptions);
+    if (!sofaResponse.ok) throw new Error(`API Error: Status ${sofaResponse.status}`);
+
+    const rawData = await sofaResponse.json();
+
+    // Extract the events array (handling different possible SofaScore wrapper structures)
+    const liveEvents = rawData.events || rawData.data || [];
+
+    // Filter out basketball, tennis, etc. - keep only Football
+    const footballEvents = liveEvents.filter((event: any) =>
+      event.tournament?.category?.sport?.name?.toLowerCase() === 'football' ||
+      event.sport?.name?.toLowerCase() === 'football' ||
+      event.homeScore !== undefined
+    );
+
+    // If there are no live football matches at this exact moment, use the premium fallback
+    if (footballEvents.length === 0) {
+      matchCache = { data: fallbackMatches, timestamp: Date.now() };
+      return res.status(200).set(corsHeaders).json({ matches: fallbackMatches, cached: false, note: "Zero live matches. Using fallback." });
+    }
+
+    // 4. The Data Mapper: Convert chaotic SofaScore JSON into our clean TypeScript interface
+    const processedMatches = footballEvents.slice(0, 5).map((event: any) => {
+      // Safely extract the minute string, defaulting to 45 if unparseable
+      const minuteStr = event.status?.description || "45";
+      const parsedMinute = parseInt(minuteStr.replace(/\D/g, '')) || 45;
+
+      return {
+        id: String(event.id),
+        competition: event.tournament?.name || 'Global Football',
+        status: 'LIVE',
+        minute: parsedMinute,
+        time: 'LIVE',
+        date: new Date().toISOString().split('T')[0],
+        homeScore: event.homeScore?.current ?? event.homeScore?.display ?? 0,
+        awayScore: event.awayScore?.current ?? event.awayScore?.display ?? 0,
+        homeTeam: {
+          id: String(event.homeTeam?.id || 'h1'),
+          name: event.homeTeam?.name || 'Home Team',
+          code: event.homeTeam?.shortName || event.homeTeam?.nameCode?.substring(0, 3) || 'HOM',
+          logo: '⚽', // Using dynamic emojis prevents broken image links from protected SofaScore CDNs
+          form: ['W', 'D', 'W'] // Form requires deep historical fetches; hardcoding to save API credits
+        },
+        awayTeam: {
+          id: String(event.awayTeam?.id || 'a1'),
+          name: event.awayTeam?.name || 'Away Team',
+          code: event.awayTeam?.shortName || event.awayTeam?.nameCode?.substring(0, 3) || 'AWY',
+          logo: '⚽',
+          form: ['L', 'W', 'D']
+        }
+      };
+    });
+
+    matchCache = { data: processedMatches, timestamp: Date.now() };
+    res.status(200).set(corsHeaders).json({ matches: processedMatches, cached: false });
+  } catch (error: any) {
+    console.warn("API restricted or offline. Deploying fail-safe matrix:", error.message);
+    res.status(200).set(corsHeaders).json({ matches: fallbackMatches, cached: false, warning: true });
+  }
 });
+
+// 1. Initialize an independent prediction cache store
+let predictionCache: {
+  [matchId: string]: {
+    data: any;
+    timestamp: number;
+    scoreHash: string
+  }
+} = {};
+
+// 3 minutes is the optimal balance for static live periods
+const PREDICT_CACHE_DURATION = 3 * 60 * 1000;
 
 app.post('/api/predict', async (req, res) => {
   try {
     const { match } = req.body;
+
+    if (!match || !match.id) {
+      return res.status(400).json({ error: "Invalid match payload provided." });
+    }
+
+    const matchId = String(match.id);
+    const currentScoreHash = `${match.homeScore ?? 0}-${match.awayScore ?? 0}`;
+    const now = Date.now();
+
+    // 2. Evaluate Context-Aware Cache Condition
+    if (
+      predictionCache[matchId] &&
+      (now - predictionCache[matchId].timestamp < PREDICT_CACHE_DURATION) &&
+      predictionCache[matchId].scoreHash === currentScoreHash
+    ) {
+      console.log(`[Cache Hit] Serving stored tactical analysis for match: ${matchId}`);
+      return res.json({ prediction: predictionCache[matchId].data, cached: true });
+    }
+
+    console.log(`[Cache Miss/Invalidated] Fetching fresh analysis from Gemini 3.5 Flash for match: ${matchId}`);
     const ai = getGeminiClient();
 
     const prompt = `You are an elite football tactical analyst. Analyze this current match context:
@@ -91,13 +184,22 @@ app.post('/api/predict', async (req, res) => {
     });
 
     const parsedData = JSON.parse(response.text || '{}');
-    res.json({ prediction: parsedData });
+
+    // 3. Store in cache alongside the current score state parameters
+    predictionCache[matchId] = {
+      data: parsedData,
+      timestamp: now,
+      scoreHash: currentScoreHash
+    };
+
+    res.json({ prediction: parsedData, cached: false });
   } catch (error: any) {
-    // Return a safe error structure so the frontend doesn't crash
     console.error("Gemini Error:", error.message);
-    res.status(500).json({ 
-      error: 'Gemini Analysis Failed', 
-      details: error.message 
+
+    // Fallback gracefully to prevent total application failure
+    res.status(500).json({
+      error: 'Gemini Analysis Interrupted',
+      details: error.message
     });
   }
 });
