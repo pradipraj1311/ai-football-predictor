@@ -56,7 +56,7 @@ app.get('/api/live-matches', async (req, res) => {
   const sofaOptions = {
     method: 'GET',
     headers: {
-      'X-RapidAPI-Key': process.env.RAPID_API_KEY || '', 
+      'X-RapidAPI-Key': process.env.RAPID_API_KEY || '',
       'X-RapidAPI-Host': 'sofascore6.p.rapidapi.com'
     }
   };
@@ -64,14 +64,14 @@ app.get('/api/live-matches', async (req, res) => {
   try {
     const sofaResponse = await fetch(sofaUrl, sofaOptions);
     if (!sofaResponse.ok) throw new Error(`API Error: Status ${sofaResponse.status}`);
-    
+
     const rawData = await sofaResponse.json();
     const liveEvents = rawData.events || rawData.data || [];
-    
-    const footballEvents = liveEvents.filter((event: any) => 
-        event.tournament?.category?.sport?.name?.toLowerCase() === 'football' || 
-        event.sport?.name?.toLowerCase() === 'football' ||
-        event.homeScore !== undefined 
+
+    const footballEvents = liveEvents.filter((event: any) =>
+      event.tournament?.category?.sport?.name?.toLowerCase() === 'football' ||
+      event.sport?.name?.toLowerCase() === 'football' ||
+      event.homeScore !== undefined
     );
 
     // If API returns 0 matches (or filters them out), deploy the minor leagues!
@@ -97,7 +97,7 @@ app.get('/api/live-matches', async (req, res) => {
           id: String(event.homeTeam?.id || 'h1'),
           name: event.homeTeam?.name || 'Home Team',
           code: event.homeTeam?.shortName || 'HOM',
-          logo: '⚽', 
+          logo: '⚽',
           form: ['W', 'D', 'W']
         },
         awayTeam: {
@@ -130,11 +130,10 @@ let predictionCache: {
 
 // 3 minutes is the optimal balance for static live periods
 const PREDICT_CACHE_DURATION = 3 * 60 * 1000;
-
 app.post('/api/predict', async (req, res) => {
   try {
     const { match } = req.body;
-
+    
     if (!match || !match.id) {
       return res.status(400).json({ error: "Invalid match payload provided." });
     }
@@ -143,61 +142,65 @@ app.post('/api/predict', async (req, res) => {
     const currentScoreHash = `${match.homeScore ?? 0}-${match.awayScore ?? 0}`;
     const now = Date.now();
 
-    // 2. Evaluate Context-Aware Cache Condition
     if (
-      predictionCache[matchId] &&
+      predictionCache[matchId] && 
       (now - predictionCache[matchId].timestamp < PREDICT_CACHE_DURATION) &&
       predictionCache[matchId].scoreHash === currentScoreHash
     ) {
-      console.log(`[Cache Hit] Serving stored tactical analysis for match: ${matchId}`);
+      console.log(`[Cache Hit] Serving ELITE tactical analysis for match: ${matchId}`);
       return res.json({ prediction: predictionCache[matchId].data, cached: true });
     }
 
-    console.log(`[Cache Miss/Invalidated] Fetching fresh analysis from Gemini 3.5 Flash for match: ${matchId}`);
+    console.log(`[Cache Miss] Fetching FRESH ELITE analysis from Gemini 3.5 Flash for match: ${matchId}`);
     const ai = getGeminiClient();
 
-    // Determine the match context
     const isEarlyGame = (match.minute ?? 0) < 30;
     const isLateGame = (match.minute ?? 0) > 75;
     const isDraw = (match.homeScore ?? 0) === (match.awayScore ?? 0);
-    const scoreDiff = Math.abs((match.homeScore ?? 0) - (match.awayScore ?? 0));
-    const isBlowout = scoreDiff >= 3;
 
     let tacticalContext = "";
-    if (isEarlyGame) tacticalContext = "Focus on early tactical setups, formations, and how the teams are trying to establish control.";
-    else if (isLateGame && isDraw) tacticalContext = "Focus on the desperation of a late draw, potential game-winning substitutions, fatigue, and end-to-end transitional threats.";
-    else if (isLateGame && !isDraw && !isBlowout) tacticalContext = "Focus on the leading team's defensive structure ('parking the bus') versus the trailing team's attacking overload.";
-    else if (isBlowout) tacticalContext = "Focus on game management for the leading team and damage limitation/pride for the trailing team.";
-    else tacticalContext = "Focus on the ongoing midfield battle, structural adjustments, and key individual matchups.";
+    if (isEarlyGame) tacticalContext = "Analyze the early tactical setups. Who is dominating the midfield and dictating the tempo?";
+    else if (isLateGame && isDraw) tacticalContext = "High stakes! Analyze the desperation phase. Who has the stamina and tactical edge to score a late winner?";
+    else tacticalContext = "Analyze the current game state. How is the leading team defending, and what must the trailing team change to break through?";
 
-    const prompt = `You are a world-class football tactical analyst for a premium sports intelligence platform. Analyze this current match:
+    const prompt = `You are an elite, premium sports tactical analyst for a high-paying subscriber dashboard. Analyze this live match:
     Competition: ${match.competition}
     Home Team: ${match.homeTeam.name} (Current Score: ${match.homeScore ?? 0})
     Away Team: ${match.awayTeam.name} (Current Score: ${match.awayScore ?? 0})
-    Match Status: ${match.status} (Minute: ${match.minute ?? 'N/A'})
+    Minute: ${match.minute ?? 'N/A'}
 
-    Critical Instruction: ${tacticalContext}
-
-    Generate a highly realistic win probability split (adding up to 100%), a projected final scoreline, a sharp tactical evaluation (max 3 sentences), and a fantasy roster recommendation (the 3 best players on the pitch right now).
+    Context: ${tacticalContext}
     
+    Provide a deeply analytical but accessible breakdown. We need to tell the user things they cannot see just by looking at the score.
+
     Respond STRICTLY with a valid JSON object matching this exact schema:
     {
       "winProbability": { "home": 50, "draw": 25, "away": 25 },
       "suggestedScore": "2-1",
-      "analysis": "Detailed tactical analysis paragraph goes here.",
+      "analysis": "2 sentences explaining the overarching tactical narrative.",
+      "vulnerabilities": {
+        "home": "Identify one specific tactical weakness the home team is showing right now (e.g., 'Vulnerable to counter-attacks on the left flank').",
+        "away": "Identify one specific tactical weakness the away team is showing right now."
+      },
+      "keyMatchups": [
+        {
+          "battle": "Player X vs Player Y",
+          "impact": "Crucial",
+          "detail": "Explain why this specific 1v1 area is deciding the game right now."
+        }
+      ],
       "advisor": {
-        "captain": "Name of best player",
-        "viceCaptain": "Name of second best player",
+        "captain": "Best player name",
+        "viceCaptain": "Second best player name",
         "bestXI": [
-          {"name": "Player 1", "team": "${match.homeTeam.name}", "rating": 8.9, "reason": "Reasoning (max 1 sentence)"},
-          {"name": "Player 2", "team": "${match.awayTeam.name}", "rating": 8.4, "reason": "Reasoning (max 1 sentence)"},
-          {"name": "Player 3", "team": "Either Team", "rating": 8.1, "reason": "Reasoning (max 1 sentence)"}
+          {"name": "Player 1", "team": "${match.homeTeam.name}", "rating": 8.9, "reason": "Why they are dominating"},
+          {"name": "Player 2", "team": "${match.awayTeam.name}", "rating": 8.4, "reason": "Why they are dominating"}
         ]
       }
     }`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.5-flash',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
@@ -206,7 +209,6 @@ app.post('/api/predict', async (req, res) => {
 
     const parsedData = JSON.parse(response.text || '{}');
 
-    // 3. Store in cache alongside the current score state parameters
     predictionCache[matchId] = {
       data: parsedData,
       timestamp: now,
@@ -216,15 +218,9 @@ app.post('/api/predict', async (req, res) => {
     res.json({ prediction: parsedData, cached: false });
   } catch (error: any) {
     console.error("Gemini Error:", error.message);
-
-    // Fallback gracefully to prevent total application failure
-    res.status(500).json({
-      error: 'Gemini Analysis Interrupted',
-      details: error.message
-    });
+    res.status(500).json({ error: 'Gemini Analysis Interrupted', details: error.message });
   }
 });
-
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });

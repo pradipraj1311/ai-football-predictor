@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { MatchCard } from './components/MatchCard';
 import { AIPredictor } from './components/AIPredictor';
 import { LiveTelemetry } from './components/LiveTelemetry'; // <-- GRAPH IMPORTED HERE
+import { StandingsGrid } from './components/StandingsGrid';
 import { Match } from './types';
-import { GLOBAL_TEAMS_DIRECTORY, INITIAL_MATCHES, FootballTeamProfile } from './data';
+import { GLOBAL_TEAMS_DIRECTORY, INITIAL_MATCHES, WORLD_CUP_STANDINGS, FootballTeamProfile } from './data';
 import { BrainCircuit, Shield, Calendar, History, Globe } from 'lucide-react';
 
 function App() {
@@ -48,7 +49,7 @@ function App() {
     };
 
     fetchMatches();
-    const interval = setInterval(fetchMatches, 60000); 
+    const interval = setInterval(fetchMatches, 60000);
     return () => clearInterval(interval);
   }, []);
 
@@ -61,33 +62,33 @@ function App() {
 
   const renderWorldCupHub = () => (
     <div className="bg-[#0B1121] border border-white/5 rounded-2xl p-8 relative overflow-hidden shadow-2xl min-h-[500px] flex flex-col items-center justify-center text-center">
-       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
-       <Globe className="w-16 h-16 text-indigo-400 mb-6 animate-[spin_10s_linear_infinite]" />
-       <h2 className="text-3xl font-black text-white tracking-tight mb-2">FIFA World Cup 2026™</h2>
-       <p className="text-sm text-slate-400 font-mono mb-10">The Intelligence Matrix is preparing for global deployment.</p>
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
+      <Globe className="w-16 h-16 text-indigo-400 mb-6 animate-[spin_10s_linear_infinite]" />
+      <h2 className="text-3xl font-black text-white tracking-tight mb-2">FIFA World Cup 2026™</h2>
+      <p className="text-sm text-slate-400 font-mono mb-10">The Intelligence Matrix is preparing for global deployment.</p>
 
-       <div className="grid grid-cols-4 gap-4 w-full max-w-lg mb-8">
-          <div className="bg-[#0f172a] border border-white/5 p-4 rounded-xl shadow-inner">
-             <span className="text-4xl font-black text-white font-mono">{timeLeft.d}</span>
-             <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest block mt-1">Days</span>
-          </div>
-          <div className="bg-[#0f172a] border border-white/5 p-4 rounded-xl shadow-inner">
-             <span className="text-4xl font-black text-white font-mono">{timeLeft.h}</span>
-             <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest block mt-1">Hours</span>
-          </div>
-          <div className="bg-[#0f172a] border border-white/5 p-4 rounded-xl shadow-inner">
-             <span className="text-4xl font-black text-white font-mono">{timeLeft.m}</span>
-             <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest block mt-1">Mins</span>
-          </div>
-          <div className="bg-[#0f172a] border border-white/5 p-4 rounded-xl shadow-inner">
-             <span className="text-4xl font-black text-indigo-400 font-mono">{timeLeft.s}</span>
-             <span className="text-[10px] text-indigo-500/50 font-bold uppercase tracking-widest block mt-1">Secs</span>
-          </div>
-       </div>
+      <div className="grid grid-cols-4 gap-4 w-full max-w-lg mb-8">
+        <div className="bg-[#0f172a] border border-white/5 p-4 rounded-xl shadow-inner">
+          <span className="text-4xl font-black text-white font-mono">{timeLeft.d}</span>
+          <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest block mt-1">Days</span>
+        </div>
+        <div className="bg-[#0f172a] border border-white/5 p-4 rounded-xl shadow-inner">
+          <span className="text-4xl font-black text-white font-mono">{timeLeft.h}</span>
+          <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest block mt-1">Hours</span>
+        </div>
+        <div className="bg-[#0f172a] border border-white/5 p-4 rounded-xl shadow-inner">
+          <span className="text-4xl font-black text-white font-mono">{timeLeft.m}</span>
+          <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest block mt-1">Mins</span>
+        </div>
+        <div className="bg-[#0f172a] border border-white/5 p-4 rounded-xl shadow-inner">
+          <span className="text-4xl font-black text-indigo-400 font-mono">{timeLeft.s}</span>
+          <span className="text-[10px] text-indigo-500/50 font-bold uppercase tracking-widest block mt-1">Secs</span>
+        </div>
+      </div>
 
-       <button onClick={() => { setActiveTab('upcoming'); setSelectedTeam(null); }} className="bg-white/5 hover:bg-white/10 border border-white/10 text-white px-6 py-3 rounded-lg text-xs font-black uppercase tracking-widest transition-colors flex items-center gap-2">
-          <Calendar className="w-4 h-4" /> View Upcoming Fixtures
-       </button>
+      <button onClick={() => { setActiveTab('upcoming'); setSelectedTeam(null); }} className="bg-white/5 hover:bg-white/10 border border-white/10 text-white px-6 py-3 rounded-lg text-xs font-black uppercase tracking-widest transition-colors flex items-center gap-2">
+        <Calendar className="w-4 h-4" /> View Upcoming Fixtures
+      </button>
     </div>
   );
 
@@ -126,8 +127,8 @@ function App() {
             {activeTab !== 'teams' ? (
               filteredMatches.length === 0 && activeTab === 'live' ? (
                 <div className="text-xs text-slate-500 font-mono text-center p-8 bg-[#0B1121] rounded-xl border border-white/5 flex flex-col items-center gap-2">
-                   <span className="text-2xl">⚽</span>
-                   <span>Off-Season Mode Active.</span>
+                  <span className="text-2xl">⚽</span>
+                  <span>Off-Season Mode Active.</span>
                 </div>
               ) : filteredMatches.length === 0 ? (
                 <div className="text-xs text-slate-500 font-mono text-center p-8 bg-[#0B1121] rounded-xl border border-white/5">No active fixtures in this matrix.</div>
@@ -157,6 +158,9 @@ function App() {
               ))
             )}
           </div>
+
+          {/* NEW: Standings Table Placed Here */}
+          <StandingsGrid standings={WORLD_CUP_STANDINGS} />
         </div>
 
         <div className="lg:col-span-8 xl:col-span-9 flex flex-col gap-6">
@@ -200,12 +204,12 @@ function App() {
                   </div>
                 </div>
               </div>
-              
+
               <AIPredictor match={selectedMatch} />
-              
+
               {/* GRAPH PLACED CORRECTLY HERE */}
               {(selectedMatch.status === 'LIVE' || selectedMatch.status === 'FT') && (
-                 <LiveTelemetry match={selectedMatch} />
+                <LiveTelemetry match={selectedMatch} />
               )}
             </>
           ) : null}

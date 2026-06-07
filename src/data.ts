@@ -45,6 +45,15 @@ export const INITIAL_MATCHES: Match[] = [
     awayTeam: { id: 'fra', name: 'France', code: 'FRA', logo: '🇫🇷', form: ['L', 'W'] }
   }
 ];
-
-export const WORLD_CUP_STANDINGS = [];
+export const WORLD_CUP_STANDINGS = [
+  {
+    groupName: 'Group A',
+    entries: [
+      { rank: 1, teamName: 'Argentina', code: 'ARG', logo: '🇦🇷', played: 3, win: 3, draw: 0, lose: 0, gd: '+5', points: 9 },
+      { rank: 2, teamName: 'Mexico', code: 'MEX', logo: '🇲🇽', played: 3, win: 1, draw: 1, lose: 1, gd: '0', points: 4 },
+      { rank: 3, teamName: 'South Africa', code: 'RSA', logo: '🇿🇦', played: 3, win: 1, draw: 0, lose: 2, gd: '-2', points: 3 },
+      { rank: 4, teamName: 'Paraguay', code: 'PAR', logo: '🇵🇾', played: 3, win: 0, draw: 1, lose: 2, gd: '-3', points: 1 }
+    ]
+  }
+];
 export const TRANSLATIONS = { en: {} };

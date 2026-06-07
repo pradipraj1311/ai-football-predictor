@@ -54,7 +54,7 @@ export const AIPredictor: React.FC<{ match: Match }> = ({ match }) => {
   const pAway = data.winProbability?.away || 33;
 
   // Calculate Implied Decimal Odds (with a small 5% bookmaker margin simulation for realism)
-  const margin = 1.05; 
+  const margin = 1.05;
   const oddsHome = ((100 / pHome) / margin).toFixed(2);
   const oddsDraw = ((100 / pDraw) / margin).toFixed(2);
   const oddsAway = ((100 / pAway) / margin).toFixed(2);
@@ -64,9 +64,9 @@ export const AIPredictor: React.FC<{ match: Match }> = ({ match }) => {
       {/* Panel 1: Match Forecaster */}
       <div className="bg-[#0B1121] border border-white/5 rounded-2xl flex flex-col overflow-hidden shadow-2xl relative">
         {loading && (
-           <div className="absolute top-0 left-0 right-0 h-0.5 bg-indigo-500/20 overflow-hidden z-20">
-             <div className="h-full bg-indigo-500 animate-[pulse_1s_ease-in-out_infinite] w-1/3"></div>
-           </div>
+          <div className="absolute top-0 left-0 right-0 h-0.5 bg-indigo-500/20 overflow-hidden z-20">
+            <div className="h-full bg-indigo-500 animate-[pulse_1s_ease-in-out_infinite] w-1/3"></div>
+          </div>
         )}
         <div className="bg-gradient-to-r from-indigo-900/20 to-transparent p-4 border-b border-white/5 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -93,23 +93,23 @@ export const AIPredictor: React.FC<{ match: Match }> = ({ match }) => {
 
           {/* NEW: Live Implied Odds Row */}
           <div>
-             <div className="flex justify-between items-end mb-2">
-                 <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Live Implied Odds</span>
-             </div>
-             <div className="grid grid-cols-3 gap-2 mb-4">
-                 <div className="bg-[#0f172a] border border-white/5 rounded-lg p-2 text-center hover:border-emerald-500/30 transition-colors">
-                     <span className="block text-[9px] text-slate-400 uppercase font-bold mb-0.5">1 ({match.homeTeam.code})</span>
-                     <span className="font-mono font-black text-emerald-400">{oddsHome}</span>
-                 </div>
-                 <div className="bg-[#0f172a] border border-white/5 rounded-lg p-2 text-center hover:border-slate-400/30 transition-colors">
-                     <span className="block text-[9px] text-slate-400 uppercase font-bold mb-0.5">X (Draw)</span>
-                     <span className="font-mono font-black text-slate-300">{oddsDraw}</span>
-                 </div>
-                 <div className="bg-[#0f172a] border border-white/5 rounded-lg p-2 text-center hover:border-blue-500/30 transition-colors">
-                     <span className="block text-[9px] text-slate-400 uppercase font-bold mb-0.5">2 ({match.awayTeam.code})</span>
-                     <span className="font-mono font-black text-blue-400">{oddsAway}</span>
-                 </div>
-             </div>
+            <div className="flex justify-between items-end mb-2">
+              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Live Implied Odds</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              <div className="bg-[#0f172a] border border-white/5 rounded-lg p-2 text-center hover:border-emerald-500/30 transition-colors">
+                <span className="block text-[9px] text-slate-400 uppercase font-bold mb-0.5">1 ({match.homeTeam.code})</span>
+                <span className="font-mono font-black text-emerald-400">{oddsHome}</span>
+              </div>
+              <div className="bg-[#0f172a] border border-white/5 rounded-lg p-2 text-center hover:border-slate-400/30 transition-colors">
+                <span className="block text-[9px] text-slate-400 uppercase font-bold mb-0.5">X (Draw)</span>
+                <span className="font-mono font-black text-slate-300">{oddsDraw}</span>
+              </div>
+              <div className="bg-[#0f172a] border border-white/5 rounded-lg p-2 text-center hover:border-blue-500/30 transition-colors">
+                <span className="block text-[9px] text-slate-400 uppercase font-bold mb-0.5">2 ({match.awayTeam.code})</span>
+                <span className="font-mono font-black text-blue-400">{oddsAway}</span>
+              </div>
+            </div>
 
             <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-2 uppercase font-mono tracking-widest">
               <span>{pHome}%</span>
@@ -127,7 +127,43 @@ export const AIPredictor: React.FC<{ match: Match }> = ({ match }) => {
             <h4 className="flex items-center gap-2 text-[10px] font-black text-slate-400 tracking-widest uppercase mb-3">
               <TrendingUp className="w-3.5 h-3.5 text-indigo-400" /> Live Matrix Overview
             </h4>
-            <p className="text-sm text-slate-300 leading-relaxed font-medium">{data.analysis}</p>
+            <p className="text-sm text-slate-300 leading-relaxed font-medium mb-5">{data.analysis}</p>
+
+            {/* NEW: PREMIUM TACTICAL INSIGHTS */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Vulnerabilities */}
+              <div className="bg-[#0f172a] border border-white/5 p-4 rounded-xl">
+                <h5 className="text-[9px] font-black text-red-400 tracking-widest uppercase mb-3 flex items-center gap-1.5">
+                  <AlertTriangle className="w-3 h-3" /> Tactical Vulnerabilities
+                </h5>
+                <div className="space-y-3">
+                  <div>
+                    <span className="text-[10px] text-slate-500 font-bold uppercase block mb-0.5">{match.homeTeam.code} Weakness</span>
+                    <p className="text-xs text-slate-300">{data.vulnerabilities?.home || "Analyzing defensive structure..."}</p>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 font-bold uppercase block mb-0.5">{match.awayTeam.code} Weakness</span>
+                    <p className="text-xs text-slate-300">{data.vulnerabilities?.away || "Analyzing defensive structure..."}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Key Matchups */}
+              <div className="bg-[#0f172a] border border-white/5 p-4 rounded-xl">
+                <h5 className="text-[9px] font-black text-amber-400 tracking-widest uppercase mb-3 flex items-center gap-1.5">
+                  <Target className="w-3 h-3" /> Key Pitch Battles
+                </h5>
+                <div className="space-y-3">
+                  {data.keyMatchups?.map((matchup: any, idx: number) => (
+                    <div key={idx} className="border-l-2 border-amber-500 pl-2">
+                      <span className="text-xs font-bold text-white block">{matchup.battle}</span>
+                      <span className="text-[9px] text-amber-500/70 font-mono font-bold uppercase mb-1 block">Impact: {matchup.impact}</span>
+                      <p className="text-[11px] text-slate-400 leading-snug">{matchup.detail}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -153,17 +189,17 @@ export const AIPredictor: React.FC<{ match: Match }> = ({ match }) => {
           </div>
 
           <div className="space-y-2 mt-4">
-             <span className="text-[10px] font-black text-slate-400 tracking-widest uppercase block mb-2">Live Top Performers</span>
+            <span className="text-[10px] font-black text-slate-400 tracking-widest uppercase block mb-2">Live Top Performers</span>
             {data.advisor?.bestXI?.map((player: any, idx: number) => (
               <div key={idx} className="bg-[#0f172a] p-3 rounded-xl border border-white/5 flex flex-col gap-2 hover:border-white/10 transition-colors">
                 <div className="flex justify-between items-start">
-                    <div className="flex flex-col">
-                        <span className="font-bold text-white text-sm">{player.name}</span>
-                        <span className="text-[9px] text-slate-500 font-mono uppercase tracking-wider mt-0.5">{player.team}</span>
-                    </div>
-                    <div className="flex gap-1 items-center bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded font-mono font-bold">
-                        <Star className="w-3 h-3 fill-emerald-500 text-emerald-500" /> {player.rating}
-                    </div>
+                  <div className="flex flex-col">
+                    <span className="font-bold text-white text-sm">{player.name}</span>
+                    <span className="text-[9px] text-slate-500 font-mono uppercase tracking-wider mt-0.5">{player.team}</span>
+                  </div>
+                  <div className="flex gap-1 items-center bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded font-mono font-bold">
+                    <Star className="w-3 h-3 fill-emerald-500 text-emerald-500" /> {player.rating}
+                  </div>
                 </div>
                 <p className="text-slate-400 text-[11px] leading-snug">{player.reason}</p>
               </div>
