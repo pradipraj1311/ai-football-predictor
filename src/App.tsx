@@ -3,9 +3,11 @@ import { MatchCard } from './components/MatchCard';
 import { AIPredictor } from './components/AIPredictor';
 import { LiveTelemetry } from './components/LiveTelemetry'; // <-- GRAPH IMPORTED HERE
 import { StandingsGrid } from './components/StandingsGrid';
+import { PlayerProps } from './components/PlayerProps';
+import { TriviaQuiz } from './components/TriviaQuiz';
 import { Match } from './types';
 import { GLOBAL_TEAMS_DIRECTORY, INITIAL_MATCHES, WORLD_CUP_STANDINGS, FootballTeamProfile } from './data';
-import { BrainCircuit, Shield, Calendar, History, Globe } from 'lucide-react';
+import { BrainCircuit, Shield, Calendar, History, Globe, Coins, CloudRain, Thermometer } from 'lucide-react';
 
 function App() {
   const [matches, setMatches] = useState<Match[]>(INITIAL_MATCHES);
@@ -13,6 +15,8 @@ function App() {
   const [selectedTeam, setSelectedTeam] = useState<FootballTeamProfile | null>(null);
   const [activeTab, setActiveTab] = useState<'live' | 'upcoming' | 'results' | 'teams'>('live');
   const [timeLeft, setTimeLeft] = useState({ d: 0, h: 0, m: 0, s: 0 });
+  const [showProps, setShowProps] = useState(false);
+  const [showQuiz, setShowQuiz] = useState(false);
 
   useEffect(() => {
     const targetDate = new Date('2026-06-11T00:00:00Z').getTime();
@@ -104,7 +108,25 @@ function App() {
             <p className="text-[10px] text-slate-400 font-mono uppercase tracking-widest mt-1">Live Intelligence Matrix</p>
           </div>
         </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowQuiz(true)}
+            className="text-[10px] font-black text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-3 py-2 rounded-lg uppercase tracking-widest hover:bg-indigo-500/20 transition-colors flex items-center gap-1.5"
+          >
+            <BrainCircuit className="w-3.5 h-3.5" /> Trivia Quiz
+          </button>
+          <button
+            onClick={() => setShowProps(true)}
+            className="text-[10px] font-black text-amber-400 bg-amber-500/10 border border-amber-500/20 px-3 py-2 rounded-lg uppercase tracking-widest hover:bg-amber-500/20 transition-colors flex items-center gap-1.5"
+          >
+            <Coins className="w-3.5 h-3.5" /> Player Props
+          </button>
+        </div>
       </nav>
+
+      {showProps && <PlayerProps onClose={() => setShowProps(false)} />}
+      {showQuiz && <TriviaQuiz onClose={() => setShowQuiz(false)} />}
 
       <main className="max-w-[1600px] mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         <div className="lg:col-span-4 xl:col-span-3 flex flex-col gap-4">
@@ -202,6 +224,16 @@ function App() {
                     <span className="text-5xl">{selectedMatch.awayTeam.logo}</span>
                     <span className="text-base font-black text-white">{selectedMatch.awayTeam.name}</span>
                   </div>
+                </div>
+              </div>
+
+              {/* NEW PREMIUM FEATURE: Match Conditions */}
+              <div className="flex gap-4 px-1">
+                <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest bg-[#0B1121] px-4 py-2 rounded-lg border border-white/5 shadow-md">
+                  <Thermometer className="w-3.5 h-3.5 text-red-400" /> Temp: 24°C (Optimal)
+                </div>
+                <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest bg-[#0B1121] px-4 py-2 rounded-lg border border-white/5 shadow-md">
+                  <CloudRain className="w-3.5 h-3.5 text-blue-400" /> Pitch: Wet (Fast Surface)
                 </div>
               </div>
 

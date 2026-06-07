@@ -1,71 +1,109 @@
 import React, { useState } from 'react';
-import { TRIVIA_QUESTIONS } from '../data';
-import { HelpCircle, Star } from 'lucide-react';
+import { Brain, Trophy, CheckCircle2, XCircle, ChevronRight, X } from 'lucide-react';
 
-export const TriviaQuiz: React.FC = () => {
-  const [idx, setIdx] = useState<number>(0);
-  const [selectedOpt, setSelectedOpt] = useState<number | null>(null);
-  const [submitted, setSubmitted] = useState<boolean>(false);
-  const [score, setScore] = useState<number>(0);
+export const TriviaQuiz: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const [currentQ, setCurrentQ] = useState(0);
+  const [score, setScore] = useState(0);
+  const [selectedAns, setSelectedAns] = useState<string | null>(null);
+  const [showResult, setShowResult] = useState(false);
 
-  const active = TRIVIA_QUESTIONS[idx];
+  const questions = [
+    {
+      question: "Which country has won the most FIFA World Cup titles?",
+      options: ["Germany", "Italy", "Argentina", "Brazil"],
+      answer: "Brazil"
+    },
+    {
+      question: "Who holds the record for the most goals scored in World Cup history?",
+      options: ["Pelé", "Miroslav Klose", "Ronaldo Nazário", "Lionel Messi"],
+      answer: "Miroslav Klose"
+    },
+    {
+      question: "Which host nation was the first to be eliminated in the group stage?",
+      options: ["South Africa (2010)", "Qatar (2022)", "Japan (2002)", "USA (1994)"],
+      answer: "South Africa (2010)"
+    }
+  ];
 
-  const handleSelect = (optionIdx: number) => {
-    if (submitted) return;
-    setSelectedOpt(optionIdx);
+  const handleAnswer = (opt: string) => {
+    if (selectedAns) return;
+    setSelectedAns(opt);
+    if (opt === questions[currentQ].answer) setScore(score + 1);
   };
 
-  const handleSubmit = () => {
-    if (selectedOpt === null || submitted) return;
-    setSubmitted(true);
-    if (selectedOpt === active.answer) setScore((s) => s + 1);
-  };
-
-  const handleNext = () => {
-    setIdx((prev) => (prev + 1) % TRIVIA_QUESTIONS.length);
-    setSelectedOpt(null);
-    setSubmitted(false);
+  const nextQuestion = () => {
+    if (currentQ < questions.length - 1) {
+      setCurrentQ(currentQ + 1);
+      setSelectedAns(null);
+    } else {
+      setShowResult(true);
+    }
   };
 
   return (
-    <div className="bg-[#0B0F19] border border-white/5 p-6 rounded-2xl relative overflow-hidden">
-      <div className="flex justify-between items-center mb-4 pb-2 border-b border-white/5 text-xs text-slate-400">
-        <span className="font-bold flex items-center gap-1"><HelpCircle className="w-4 h-4 text-indigo-400" /> Trivia Quiz</span>
-        <span className="flex items-center gap-1 text-emerald-400 font-mono font-bold"><Star className="w-3 h-3 fill-emerald-500 text-emerald-500" /> Score: {score}</span>
-      </div>
+    <div className="fixed inset-0 z-[100] bg-[#0B1121]/95 backdrop-blur-md flex items-center justify-center p-4">
+      <div className="bg-slate-900 border border-indigo-500/30 rounded-2xl w-full max-w-lg overflow-hidden shadow-[0_0_50px_rgba(99,102,241,0.1)] relative">
+        <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-white bg-white/5 p-1.5 rounded-lg transition-colors z-10">
+          <X className="w-5 h-5" />
+        </button>
 
-      <div className="my-4 bg-slate-950/40 p-4 border border-white/5 rounded-lg text-white font-bold text-xs leading-relaxed">
-        {active.question}
-      </div>
+        {!showResult ? (
+          <div className="p-8">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2.5 bg-indigo-500/20 rounded-xl border border-indigo-500/30">
+                <Brain className="w-6 h-6 text-indigo-400" />
+              </div>
+              <div>
+                <h3 className="text-xl font-black text-white">Intelligence Trivia</h3>
+                <p className="text-xs text-slate-400 font-mono">Question {currentQ + 1} of {questions.length}</p>
+              </div>
+            </div>
 
-      <div className="space-y-2">
-        {active.options.map((opt, oIdx) => {
-          let style = 'bg-white/5 border-white/5 text-slate-300';
-          if (submitted) {
-            if (oIdx === active.answer) style = 'bg-green-500/15 border-green-500/30 text-green-400';
-            else if (selectedOpt === oIdx) style = 'bg-red-500/15 border-red-500/30 text-red-400';
-          } else if (selectedOpt === oIdx) {
-            style = 'bg-blue-600/20 border-blue-500 text-blue-400';
-          }
+            <h4 className="text-lg font-bold text-slate-200 mb-6 leading-snug">{questions[currentQ].question}</h4>
 
-          return (
-            <button key={oIdx} onClick={() => handleSelect(oIdx)} className={`w-full text-left p-3 text-xs font-semibold rounded-lg border transition ${style}`}>
-              {opt}
-            </button>
-          );
-        })}
-      </div>
+            <div className="space-y-3">
+              {questions[currentQ].options.map((opt, idx) => {
+                const isCorrect = opt === questions[currentQ].answer;
+                const isSelected = selectedAns === opt;
+                let btnClass = "bg-[#0B1121] border-white/10 text-slate-300 hover:border-indigo-500/50 hover:bg-indigo-500/5";
+                
+                if (selectedAns) {
+                  if (isCorrect) btnClass = "bg-emerald-500/20 border-emerald-500/50 text-emerald-400";
+                  else if (isSelected) btnClass = "bg-red-500/20 border-red-500/50 text-red-400";
+                  else btnClass = "bg-[#0B1121] border-white/5 text-slate-600 opacity-50";
+                }
 
-      <div className="mt-4">
-        {!submitted ? (
-          <button onClick={handleSubmit} disabled={selectedOpt === null} className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-45 text-white font-bold py-2.5 rounded-lg text-xs tracking-wider uppercase cursor-pointer">
-            Submit Answer
-          </button>
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => handleAnswer(opt)}
+                    disabled={!!selectedAns}
+                    className={`w-full text-left px-5 py-4 rounded-xl border font-bold transition-all flex justify-between items-center ${btnClass}`}
+                  >
+                    <span>{opt}</span>
+                    {selectedAns && isCorrect && <CheckCircle2 className="w-5 h-5 text-emerald-400" />}
+                    {selectedAns && isSelected && !isCorrect && <XCircle className="w-5 h-5 text-red-400" />}
+                  </button>
+                );
+              })}
+            </div>
+
+            {selectedAns && (
+              <button onClick={nextQuestion} className="w-full mt-6 bg-indigo-600 hover:bg-indigo-500 text-white py-3.5 rounded-xl font-black uppercase tracking-widest transition-colors flex items-center justify-center gap-2">
+                {currentQ < questions.length - 1 ? "Next Question" : "View Final Score"} <ChevronRight className="w-5 h-5" />
+              </button>
+            )}
+          </div>
         ) : (
-          <div className="space-y-3">
-            <p className="text-slate-400 text-xs italic leading-relaxed">{active.explanation}</p>
-            <button onClick={handleNext} className="w-full bg-white/10 hover:bg-white/15 text-white py-2.5 rounded-lg text-xs tracking-wider uppercase font-extrabold cursor-pointer">
-              Next Question
+          <div className="p-10 flex flex-col items-center text-center">
+            <div className="w-24 h-24 bg-amber-500/20 rounded-full flex items-center justify-center border border-amber-500/30 mb-6 relative">
+               <div className="absolute inset-0 rounded-full animate-ping bg-amber-500/20"></div>
+               <Trophy className="w-12 h-12 text-amber-400 relative z-10" />
+            </div>
+            <h3 className="text-3xl font-black text-white mb-2">Matrix Completed</h3>
+            <p className="text-slate-400 mb-8 font-mono">Your Intelligence Score: <span className="text-white font-black">{score} / {questions.length}</span></p>
+            <button onClick={onClose} className="bg-white/10 hover:bg-white/20 text-white px-8 py-3 rounded-xl font-black uppercase tracking-widest transition-colors">
+              Return to Dashboard
             </button>
           </div>
         )}
