@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { MatchCard } from './components/MatchCard';
 import { AIPredictor } from './components/AIPredictor';
-import { StandingsGrid } from './components/StandingsGrid';
-import { LiveTelemetry } from './components/LiveTelemetry';
+import { LiveTelemetry } from './components/LiveTelemetry'; // <-- GRAPH IMPORTED HERE
 import { Match } from './types';
 import { GLOBAL_TEAMS_DIRECTORY, INITIAL_MATCHES, FootballTeamProfile } from './data';
 import { BrainCircuit, Shield, Calendar, History, Globe } from 'lucide-react';
@@ -14,7 +13,6 @@ function App() {
   const [activeTab, setActiveTab] = useState<'live' | 'upcoming' | 'results' | 'teams'>('live');
   const [timeLeft, setTimeLeft] = useState({ d: 0, h: 0, m: 0, s: 0 });
 
-  // Countdown Timer Logic
   useEffect(() => {
     const targetDate = new Date('2026-06-11T00:00:00Z').getTime();
     const interval = setInterval(() => {
@@ -32,7 +30,6 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Fetch Live Matches Logic
   useEffect(() => {
     const fetchMatches = () => {
       fetch('/api/live-matches')
@@ -42,7 +39,6 @@ function App() {
           const updated = [...liveData, ...INITIAL_MATCHES.filter(m => m.status !== 'LIVE')];
           setMatches(updated);
 
-          // Preserve selection smartly
           setSelectedMatch(prev => {
             if (!prev) return liveData[0] || updated.find(m => m.status === 'UPCOMING');
             return updated.find(m => m.id === prev.id) || prev;
@@ -52,7 +48,7 @@ function App() {
     };
 
     fetchMatches();
-    const interval = setInterval(fetchMatches, 60000); // Poll every 60s
+    const interval = setInterval(fetchMatches, 60000); 
     return () => clearInterval(interval);
   }, []);
 
@@ -63,11 +59,9 @@ function App() {
     return false;
   });
 
-  // Premium Empty State Component
   const renderWorldCupHub = () => (
     <div className="bg-[#0B1121] border border-white/5 rounded-2xl p-8 relative overflow-hidden shadow-2xl min-h-[500px] flex flex-col items-center justify-center text-center">
        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
-       
        <Globe className="w-16 h-16 text-indigo-400 mb-6 animate-[spin_10s_linear_infinite]" />
        <h2 className="text-3xl font-black text-white tracking-tight mb-2">FIFA World Cup 2026™</h2>
        <p className="text-sm text-slate-400 font-mono mb-10">The Intelligence Matrix is preparing for global deployment.</p>
@@ -184,7 +178,7 @@ function App() {
               <div className="bg-[#0B1121] border border-white/5 rounded-2xl p-6 relative overflow-hidden shadow-2xl">
                 <div className="flex justify-between items-center mb-6">
                   <span className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider">{selectedMatch.competition}</span>
-                  <span className={`text-[10px] font-black px-2.5 py-0.5 rounded border ${selectedMatch.status === 'LIVE' ? 'bg-red-500/10 text-red-400 border-red-500/20 animate-pulse' : 'bg-white/5 text-slate-400 border-white/10'}`}>{selectedMatch.status}</span>
+                  <span className={`text-[10px] font-black px-2.5 py-0.5 rounded border ${selectedMatch.status === 'LIVE' ? 'bg-red-500/10 text-red-400 border-red-500/20 animate-pulse' : selectedMatch.status === 'UPCOMING' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 'bg-white/5 text-slate-400 border-white/10'}`}>{selectedMatch.status}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex flex-col items-center gap-3 w-1/3">
@@ -206,11 +200,12 @@ function App() {
                   </div>
                 </div>
               </div>
+              
               <AIPredictor match={selectedMatch} />
               
-              {/* નવો ટેલિમેટ્રી ગ્રાફ માત્ર લાઈવ અને પૂરી થયેલી મેચો માટે જ */}
+              {/* GRAPH PLACED CORRECTLY HERE */}
               {(selectedMatch.status === 'LIVE' || selectedMatch.status === 'FT') && (
-                <LiveTelemetry match={selectedMatch} />
+                 <LiveTelemetry match={selectedMatch} />
               )}
             </>
           ) : null}
