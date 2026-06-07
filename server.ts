@@ -30,26 +30,11 @@ app.get('/api/live-matches', async (req, res) => {
     return res.status(200).set(corsHeaders).json({ matches: matchCache.data, cached: true });
   }
 
-  // 2. Fail-Safe: Used if API limits are hit OR if zero matches are live globally at this exact minute
-  const fallbackMatches = [
-    {
-      id: 'live-1', isFallback: true, competition: 'UEFA Champions League', status: 'LIVE', minute: 72, time: '20:00', date: new Date().toISOString().split('T')[0],
-      homeScore: 2, awayScore: 2, homeTeam: { id: 'rma', name: 'Real Madrid', code: 'RMA', logo: '👑', form: ['W', 'W', 'D'] },
-      awayTeam: { id: 'mci', name: 'Manchester City', code: 'MCI', logo: '🔵', form: ['W', 'W', 'W'] }
-    },
-    {
-      id: 'live-2', isFallback: true, competition: 'Premier League', status: 'LIVE', minute: 18, time: '15:00', date: new Date().toISOString().split('T')[0],
-      homeScore: 1, awayScore: 0, homeTeam: { id: 'ars', name: 'Arsenal', code: 'ARS', logo: '🔴', form: ['W', 'D', 'W'] },
-      awayTeam: { id: 'liv', name: 'Liverpool', code: 'LIV', logo: '🦅', form: ['L', 'W', 'W'] }
-    }
-  ];
-
-  // 3. Target the Live Events endpoint
   const sofaUrl = 'https://sofascore6.p.rapidapi.com/api/sofascore/v1/events/live';
   const sofaOptions = {
     method: 'GET',
     headers: {
-      'X-RapidAPI-Key': process.env.RAPID_API_KEY || '',
+      'X-RapidAPI-Key': process.env.RAPID_API_KEY || '', 
       'X-RapidAPI-Host': 'sofascore6.p.rapidapi.com'
     }
   };
@@ -57,28 +42,24 @@ app.get('/api/live-matches', async (req, res) => {
   try {
     const sofaResponse = await fetch(sofaUrl, sofaOptions);
     if (!sofaResponse.ok) throw new Error(`API Error: Status ${sofaResponse.status}`);
-
+    
     const rawData = await sofaResponse.json();
-
-    // Extract the events array (handling different possible SofaScore wrapper structures)
     const liveEvents = rawData.events || rawData.data || [];
-
-    // Filter out basketball, tennis, etc. - keep only Football
-    const footballEvents = liveEvents.filter((event: any) =>
-      event.tournament?.category?.sport?.name?.toLowerCase() === 'football' ||
-      event.sport?.name?.toLowerCase() === 'football' ||
-      event.homeScore !== undefined
+    
+    // Filter only football matches
+    const footballEvents = liveEvents.filter((event: any) => 
+        event.tournament?.category?.sport?.name?.toLowerCase() === 'football' || 
+        event.sport?.name?.toLowerCase() === 'football' ||
+        event.homeScore !== undefined 
     );
 
-    // If there are no live football matches at this exact moment, use the premium fallback
+    // ✅ THE FIX: If 0 live matches, return strictly EMPTY array. No fake data.
     if (footballEvents.length === 0) {
-      matchCache = { data: fallbackMatches, timestamp: Date.now() };
-      return res.status(200).set(corsHeaders).json({ matches: fallbackMatches, cached: false, note: "Zero live matches. Using fallback." });
+      matchCache = { data: [], timestamp: Date.now() };
+      return res.status(200).set(corsHeaders).json({ matches: [], cached: false, note: "Zero live matches." });
     }
 
-    // 4. The Data Mapper: Convert chaotic SofaScore JSON into our clean TypeScript interface
     const processedMatches = footballEvents.slice(0, 5).map((event: any) => {
-      // Safely extract the minute string, defaulting to 45 if unparseable
       const minuteStr = event.status?.description || "45";
       const parsedMinute = parseInt(minuteStr.replace(/\D/g, '')) || 45;
 
@@ -94,14 +75,14 @@ app.get('/api/live-matches', async (req, res) => {
         homeTeam: {
           id: String(event.homeTeam?.id || 'h1'),
           name: event.homeTeam?.name || 'Home Team',
-          code: event.homeTeam?.shortName || event.homeTeam?.nameCode?.substring(0, 3) || 'HOM',
-          logo: '⚽', // Using dynamic emojis prevents broken image links from protected SofaScore CDNs
-          form: ['W', 'D', 'W'] // Form requires deep historical fetches; hardcoding to save API credits
+          code: event.homeTeam?.shortName || 'HOM',
+          logo: '⚽', 
+          form: ['W', 'D', 'W']
         },
         awayTeam: {
           id: String(event.awayTeam?.id || 'a1'),
           name: event.awayTeam?.name || 'Away Team',
-          code: event.awayTeam?.shortName || event.awayTeam?.nameCode?.substring(0, 3) || 'AWY',
+          code: event.awayTeam?.shortName || 'AWY',
           logo: '⚽',
           form: ['L', 'W', 'D']
         }
@@ -111,8 +92,8 @@ app.get('/api/live-matches', async (req, res) => {
     matchCache = { data: processedMatches, timestamp: Date.now() };
     res.status(200).set(corsHeaders).json({ matches: processedMatches, cached: false });
   } catch (error: any) {
-    console.warn("API restricted or offline. Deploying fail-safe matrix:", error.message);
-    res.status(200).set(corsHeaders).json({ matches: fallbackMatches, cached: false, warning: true });
+    console.warn("API Error:", error.message);
+    res.status(200).set(corsHeaders).json({ matches: [], cached: false, warning: true });
   }
 });
 
