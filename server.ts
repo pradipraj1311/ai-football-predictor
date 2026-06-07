@@ -33,12 +33,12 @@ app.get('/api/live-matches', async (req, res) => {
   // 2. Fail-Safe: Used if API limits are hit OR if zero matches are live globally at this exact minute
   const fallbackMatches = [
     {
-      id: 'live-1', competition: 'UEFA Champions League', status: 'LIVE', minute: 72, time: '20:00', date: new Date().toISOString().split('T')[0],
+      id: 'live-1', isFallback: true, competition: 'UEFA Champions League', status: 'LIVE', minute: 72, time: '20:00', date: new Date().toISOString().split('T')[0],
       homeScore: 2, awayScore: 2, homeTeam: { id: 'rma', name: 'Real Madrid', code: 'RMA', logo: '👑', form: ['W', 'W', 'D'] },
       awayTeam: { id: 'mci', name: 'Manchester City', code: 'MCI', logo: '🔵', form: ['W', 'W', 'W'] }
     },
     {
-      id: 'live-2', competition: 'Premier League', status: 'LIVE', minute: 18, time: '15:00', date: new Date().toISOString().split('T')[0],
+      id: 'live-2', isFallback: true, competition: 'Premier League', status: 'LIVE', minute: 18, time: '15:00', date: new Date().toISOString().split('T')[0],
       homeScore: 1, awayScore: 0, homeTeam: { id: 'ars', name: 'Arsenal', code: 'ARS', logo: '🔴', form: ['W', 'D', 'W'] },
       awayTeam: { id: 'liv', name: 'Liverpool', code: 'LIV', logo: '🦅', form: ['L', 'W', 'W'] }
     }
@@ -194,7 +194,7 @@ app.post('/api/predict', async (req, res) => {
     }`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.5-flash',
+      model: 'gemini-2.5-flash',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
