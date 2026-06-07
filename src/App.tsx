@@ -11,17 +11,37 @@ function App() {
   const [loadingMatches, setLoadingMatches] = useState<boolean>(true);
 
   useEffect(() => {
-    // Dynamically pull current matches from backend proxy on load
-    fetch('/api/live-matches')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.matches && data.matches.length > 0) {
-          setMatches(data.matches);
-          setSelectedMatch(data.matches[0]);
-        }
-      })
-      .catch((err) => console.error("Error capturing live fixture grid:", err))
-      .finally(() => setLoadingMatches(false));
+    // 1. Function to fetch data
+    const fetchLiveMatches = () => {
+      fetch('/api/live-matches')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.matches && data.matches.length > 0) {
+            setMatches(data.matches);
+
+            // Only set the selected match initially, don't overwrite user selection on polling updates
+            setSelectedMatch((prevSelected) => {
+              if (!prevSelected) return data.matches[0];
+
+              // Find the updated version of the currently selected match to update scores
+              const updatedSelected = data.matches.find((m: Match) => m.id === prevSelected.id);
+              return updatedSelected || prevSelected;
+            });
+          }
+        })
+        .catch((err) => console.error("Error capturing live fixture grid:", err))
+        .finally(() => setLoadingMatches(false));
+    };
+
+    // 2. Initial fetch on load
+    fetchLiveMatches();
+
+    // 3. Set up the polling interval (every 60 seconds)
+    const POLLING_INTERVAL_MS = 60000;
+    const intervalId = setInterval(fetchLiveMatches, POLLING_INTERVAL_MS);
+
+    // 4. Cleanup interval on unmount
+    return () => clearInterval(intervalId);
   }, []);
 
   return (

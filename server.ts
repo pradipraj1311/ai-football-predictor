@@ -153,14 +153,31 @@ app.post('/api/predict', async (req, res) => {
     console.log(`[Cache Miss/Invalidated] Fetching fresh analysis from Gemini 3.5 Flash for match: ${matchId}`);
     const ai = getGeminiClient();
 
-    const prompt = `You are an elite football tactical analyst. Analyze this current match context:
+    // Determine the match context
+    const isEarlyGame = (match.minute ?? 0) < 30;
+    const isLateGame = (match.minute ?? 0) > 75;
+    const isDraw = (match.homeScore ?? 0) === (match.awayScore ?? 0);
+    const scoreDiff = Math.abs((match.homeScore ?? 0) - (match.awayScore ?? 0));
+    const isBlowout = scoreDiff >= 3;
+
+    let tacticalContext = "";
+    if (isEarlyGame) tacticalContext = "Focus on early tactical setups, formations, and how the teams are trying to establish control.";
+    else if (isLateGame && isDraw) tacticalContext = "Focus on the desperation of a late draw, potential game-winning substitutions, fatigue, and end-to-end transitional threats.";
+    else if (isLateGame && !isDraw && !isBlowout) tacticalContext = "Focus on the leading team's defensive structure ('parking the bus') versus the trailing team's attacking overload.";
+    else if (isBlowout) tacticalContext = "Focus on game management for the leading team and damage limitation/pride for the trailing team.";
+    else tacticalContext = "Focus on the ongoing midfield battle, structural adjustments, and key individual matchups.";
+
+    const prompt = `You are a world-class football tactical analyst for a premium sports intelligence platform. Analyze this current match:
     Competition: ${match.competition}
     Home Team: ${match.homeTeam.name} (Current Score: ${match.homeScore ?? 0})
     Away Team: ${match.awayTeam.name} (Current Score: ${match.awayScore ?? 0})
     Match Status: ${match.status} (Minute: ${match.minute ?? 'N/A'})
 
-    Generate a highly realistic win probability split adding up to 100%, a projected final scoreline string, a sharp tactical evaluation, and a best 4-player fantasy roster recommendation from these teams.
-    Respond strictly with a valid JSON object matching this schema structure:
+    Critical Instruction: ${tacticalContext}
+
+    Generate a highly realistic win probability split (adding up to 100%), a projected final scoreline, a sharp tactical evaluation (max 3 sentences), and a fantasy roster recommendation (the 3 best players on the pitch right now).
+    
+    Respond STRICTLY with a valid JSON object matching this exact schema:
     {
       "winProbability": { "home": 50, "draw": 25, "away": 25 },
       "suggestedScore": "2-1",
@@ -169,8 +186,9 @@ app.post('/api/predict', async (req, res) => {
         "captain": "Name of best player",
         "viceCaptain": "Name of second best player",
         "bestXI": [
-          {"name": "Player 1", "team": "${match.homeTeam.name}", "rating": 8.9, "reason": "Reasoning"},
-          {"name": "Player 2", "team": "${match.awayTeam.name}", "rating": 8.4, "reason": "Reasoning"}
+          {"name": "Player 1", "team": "${match.homeTeam.name}", "rating": 8.9, "reason": "Reasoning (max 1 sentence)"},
+          {"name": "Player 2", "team": "${match.awayTeam.name}", "rating": 8.4, "reason": "Reasoning (max 1 sentence)"},
+          {"name": "Player 3", "team": "Either Team", "rating": 8.1, "reason": "Reasoning (max 1 sentence)"}
         ]
       }
     }`;
