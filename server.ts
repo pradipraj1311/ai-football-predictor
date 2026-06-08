@@ -147,11 +147,9 @@ app.post('/api/predict', async (req, res) => {
       (now - predictionCache[matchId].timestamp < PREDICT_CACHE_DURATION) &&
       predictionCache[matchId].scoreHash === currentScoreHash
     ) {
-      console.log(`[Cache Hit] Serving ELITE tactical analysis for match: ${matchId}`);
       return res.json({ prediction: predictionCache[matchId].data, cached: true });
     }
 
-    console.log(`[Cache Miss] Fetching FRESH ELITE analysis from Gemini 3.5 Flash for match: ${matchId}`);
     const ai = getGeminiClient();
 
     const isEarlyGame = (match.minute ?? 0) < 30;
@@ -179,7 +177,7 @@ app.post('/api/predict', async (req, res) => {
       "suggestedScore": "2-1",
       "analysis": "2 sentences explaining the overarching tactical narrative.",
       "vulnerabilities": {
-        "home": "Identify one specific tactical weakness the home team is showing right now (e.g., 'Vulnerable to counter-attacks on the left flank').",
+        "home": "Identify one specific tactical weakness the home team is showing right now.",
         "away": "Identify one specific tactical weakness the away team is showing right now."
       },
       "keyMatchups": [
@@ -199,15 +197,47 @@ app.post('/api/predict', async (req, res) => {
       }
     }`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.5-flash',
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-      }
-    });
+    // --- THE CASCADE ENGINE (SMART FALLBACK) ---
+    // આ એરે (Array) માં આપણે મોડલ્સ ની પ્રાયોરિટી નક્કી કરી છે.
+    const modelsToTry = [
+      'gemini-3.5-flash',       // 1st Priority (Best Quality)
+      'gemini-3.1-flash-lite',  // 2nd Priority (500 RPD Limit - Very safe)
+      'gemini-2.5-flash',       // 3rd Priority (Backup)
+      'gemini-3-flash'          // Final Backup
+    ];
 
-    const parsedData = JSON.parse(response.text || '{}');
+    let parsedData = null;
+    let successfulModel = '';
+
+    for (const modelName of modelsToTry) {
+      try {
+        console.log(`[Neural Engine] Attempting to generate prediction using model: ${modelName}`);
+        
+        const response = await ai.models.generateContent({
+          model: modelName,
+          contents: prompt,
+          config: {
+            responseMimeType: 'application/json',
+          }
+        });
+
+        parsedData = JSON.parse(response.text || '{}');
+        successfulModel = modelName;
+        break; // જો મોડલ સક્સેસ થાય તો લૂપ તોડી નાખો (stop trying other models)
+
+      } catch (err: any) {
+        // જો લિમિટ પૂરી થઈ ગઈ હોય (429) તો વોર્નિંગ આપો અને નેક્સ્ટ મોડલ ટ્રાય કરો
+        console.warn(`[Neural Engine Warning] Model ${modelName} failed (likely quota exceeded). Error: ${err.message}`);
+        continue; 
+      }
+    }
+
+    // જો ચારેય મોડલ લિમિટ પૂરી કરી દે (જે બહુ મુશ્કેલ છે), તો જ આ એરર આવશે
+    if (!parsedData) {
+       throw new Error("All Gemini models exhausted their quota or failed.");
+    }
+
+    console.log(`[Success] Tactical analysis generated using: ${successfulModel}`);
 
     predictionCache[matchId] = {
       data: parsedData,
@@ -217,7 +247,7 @@ app.post('/api/predict', async (req, res) => {
 
     res.json({ prediction: parsedData, cached: false });
   } catch (error: any) {
-    console.error("Gemini Error:", error.message);
+    console.error("Gemini Critical Error:", error.message);
     res.status(500).json({ error: 'Gemini Analysis Interrupted', details: error.message });
   }
 });
