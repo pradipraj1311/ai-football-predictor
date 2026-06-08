@@ -14,6 +14,7 @@ import { BrainCircuit, Shield, Calendar, History, Globe, Coins, CloudRain, Therm
 function App() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
+  const [standings, setStandings] = useState(WORLD_CUP_STANDINGS);
   const [selectedTeam, setSelectedTeam] = useState<FootballTeamProfile | null>(null);
   const [activeTab, setActiveTab] = useState<'live' | 'upcoming' | 'results' | 'teams' | 'standings'>('upcoming');
   const [timeLeft, setTimeLeft] = useState({ d: 0, h: 0, m: 0, s: 0 });
@@ -56,21 +57,98 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Fetch Data from DB and RapidAPI
+  // NEW: Intelligent Data Pipeline (DB + RapidAPI)
   useEffect(() => {
     const fetchAllMatches = async () => {
       try {
+        console.log("Fetching matches from DB..."); // Debugging log
+        // 1. Fetch from Database
         const dbRes = await fetch('/api/db-matches');
+        if (!dbRes.ok) throw new Error("Failed to fetch DB matches");
         const dbData = await dbRes.json();
         const dbMatches = dbData.matches || [];
+        console.log("DB Matches loaded:", dbMatches.length); // Debugging log
 
+        // 2. Fetch from Live API
+        console.log("Fetching live matches from API..."); // Debugging log
         const liveRes = await fetch('/api/live-matches');
-        const liveData = await liveRes.json();
-        const liveMatches = liveData.matches || [];
+        let liveMatches = [];
+        if (liveRes.ok) {
+          const liveData = await liveRes.json();
+          liveMatches = liveData.matches || [];
+        }
+        console.log("Live Matches loaded:", liveMatches.length); // Debugging log
 
-        const combinedMatches = [...liveMatches, ...dbMatches.filter((m: Match) => m.status !== 'LIVE')];
+        // 3. Combine them intelligently
+        // Remove any DB match that is currently LIVE according to the external API to avoid duplicates
+        const liveIds = liveMatches.map((m: Match) => m.id);
+        const nonLiveDbMatches = dbMatches.filter((m: Match) => !liveIds.includes(m.id));
+
+        const combinedMatches = [...liveMatches, ...nonLiveDbMatches];
+
+        console.log("Total Combined Matches:", combinedMatches.length); // Debugging log
+
+        // State Update
         setMatches(combinedMatches);
 
+        // --- NEW: DYNAMIC STANDINGS ENGINE ---
+        // 1. Create a deep copy of the base standings to reset stats
+        let newStandings = JSON.parse(JSON.stringify(WORLD_CUP_STANDINGS));
+
+        // 2. Process all finished or live matches to calculate stats
+        combinedMatches.forEach((m: Match) => {
+          if ((m.status === 'FT' || m.status === 'LIVE') && m.homeScore !== undefined && m.awayScore !== undefined) {
+            const homeCode = typeof m.homeTeam === 'object' ? m.homeTeam.code : m.homeTeam;
+            const awayCode = typeof m.awayTeam === 'object' ? m.awayTeam.code : m.awayTeam;
+            const homeGoals = m.homeScore;
+            const awayGoals = m.awayScore;
+
+            let matchFoundInStandings = false; // Flag to track if the match is relevant to our standings
+
+            newStandings.forEach((group: any) => {
+              // This logic is a bit complex, but it correctly updates each team's stats individually.
+              group.entries.forEach((team: any) => {
+                // Only calculate points if the team from the match exists in our World Cup standings
+                if (team.code === homeCode || team.code === awayCode) {
+                  matchFoundInStandings = true;
+
+                  team.played += 1;
+                  const isHome = team.code === homeCode;
+                  const goalsFor = isHome ? homeGoals : awayGoals;
+                  const goalsAgainst = isHome ? awayGoals : homeGoals;
+
+                  team.gd = parseInt(team.gd) + (goalsFor - goalsAgainst);
+
+                  if (goalsFor > goalsAgainst) {
+                    team.win += 1;
+                    team.points += 3;
+                  } else if (goalsFor < goalsAgainst) {
+                    team.lose += 1;
+                  } else {
+                    team.draw += 1;
+                    team.points += 1;
+                  }
+                }
+              });
+
+              // Sort the group by points, then by goal difference
+              group.entries.sort((a: any, b: any) => {
+                if (b.points !== a.points) return b.points - a.points;
+                return parseInt(b.gd) - parseInt(a.gd);
+              });
+
+              // Assign new ranks
+              group.entries.forEach((team: any, idx: number) => {
+                team.rank = idx + 1;
+                team.gd = parseInt(team.gd) > 0 ? `+${parseInt(team.gd)}` : `${parseInt(team.gd)}`;
+              });
+            });
+          }
+        });
+
+        setStandings(newStandings);
+
+        // Goal Tracking Logic
         const newAlerts: any[] = [];
         liveMatches.forEach((newMatch: any) => {
           const oldMatch = previousMatchesRef.current.find(m => m.id === newMatch.id);
@@ -87,8 +165,15 @@ function App() {
         }
 
         previousMatchesRef.current = liveMatches;
+
+        // Smart Selection Logic
         setSelectedMatch(prev => {
-          if (!prev) return combinedMatches[0];
+          if (!prev) {
+            // Default selection: Try to pick a live match first, if none, pick an upcoming one
+            return combinedMatches.find((m: Match) => m.status === 'LIVE') ||
+              combinedMatches.find((m: Match) => m.status === 'UPCOMING') ||
+              combinedMatches[0];
+          }
           return combinedMatches.find((m: Match) => m.id === prev.id) || prev;
         });
 
@@ -128,7 +213,7 @@ function App() {
           </div>
           <div>
             <h1 className="text-xl font-black text-white tracking-tight leading-none">E2match<span className="text-indigo-400">.ai</span></h1>
-            <p className="text-[10px] text-slate-400 font-mono uppercase tracking-widest mt-1">Live Intelligence Matrix</p>
+            <p className="text-[10px] text-slate-400 font-mono uppercase tracking-widest mt-1">Live Intelligence</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -183,7 +268,7 @@ function App() {
 
         <div className="lg:col-span-8 xl:col-span-9 flex flex-col gap-6">
           {activeTab === 'standings' ? (
-            <StandingsGrid standings={WORLD_CUP_STANDINGS} />
+            <StandingsGrid standings={standings} />
           ) : activeTab === 'teams' && selectedTeam ? (
             <div className="flex flex-col gap-6">
               <div className="bg-[#0B1121] border border-white/5 rounded-2xl p-6 relative overflow-hidden shadow-2xl">
@@ -246,11 +331,11 @@ function App() {
               )}
             </>
           ) : (
-             <div className="text-center mt-20 text-slate-500">
-                <Globe className="w-16 h-16 text-indigo-500/20 mx-auto mb-4 animate-[spin_10s_linear_infinite]" />
-                <h2 className="text-3xl font-black text-white mb-2">FIFA World Cup 2026™</h2>
-                <span className="text-xs font-black text-indigo-400 bg-indigo-500/10 px-3 py-1 rounded-full uppercase tracking-widest border border-indigo-500/20 mb-6 inline-block">Detected Matrix: {userLocation} ({sportName})</span>
-             </div>
+            <div className="text-center mt-20 text-slate-500">
+              <Globe className="w-16 h-16 text-indigo-500/20 mx-auto mb-4 animate-[spin_10s_linear_infinite]" />
+              <h2 className="text-3xl font-black text-white mb-2">FIFA World Cup 2026™</h2>
+              <span className="text-xs font-black text-indigo-400 bg-indigo-500/10 px-3 py-1 rounded-full uppercase tracking-widest border border-indigo-500/20 mb-6 inline-block">System Info: {userLocation} ({sportName})</span>
+            </div>
           )}
         </div>
       </main>

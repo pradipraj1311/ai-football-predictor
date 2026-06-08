@@ -36,7 +36,7 @@ export const PlayerProps: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                 <div className="flex justify-between items-end mb-8 border-b border-white/5 pb-6">
                     <div>
                         <h2 className="text-3xl font-black text-white flex items-center gap-3">
-                            <Coins className="w-8 h-8 text-amber-400" /> AI Player Props Matrix
+                            <Coins className="w-8 h-8 text-amber-400" /> AI Player Props
                         </h2>
                         <p className="text-sm text-slate-400 font-mono mt-2">Deep-learning generated micro-betting probabilities.</p>
                     </div>
@@ -44,7 +44,7 @@ export const PlayerProps: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                         onClick={onClose}
                         className="bg-white/5 hover:bg-white/10 text-white border border-white/10 px-6 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all"
                     >
-                        Close Matrix
+                        Close
                     </button>
                 </div>
 

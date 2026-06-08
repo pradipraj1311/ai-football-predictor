@@ -32,7 +32,7 @@ export const NewsTicker: React.FC = () => {
                 {/* Fix 1: Made the label a bit wider (w-48) and gave it a z-index (z-20) */}
                 <div className="bg-indigo-600 px-4 h-full flex items-center gap-2 absolute left-0 z-20 shadow-[15px_0_20px_rgba(11,17,33,0.9)] w-24 md:w-48 justify-center md:justify-start">
                     <Megaphone className="w-4 h-4 text-white animate-pulse shrink-0" />
-                    <span className="text-[10px] font-black text-white uppercase tracking-widest hidden md:inline-block truncate">Live Matrix News</span>
+                    <span className="text-[10px] font-black text-white uppercase tracking-widest hidden md:inline-block truncate">Live Intelligence</span>
                     <span className="text-[10px] font-black text-white uppercase tracking-widest md:hidden">News</span>
                 </div>
 

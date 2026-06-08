@@ -66,7 +66,7 @@ export const TriviaQuiz: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                 const isCorrect = opt === questions[currentQ].answer;
                 const isSelected = selectedAns === opt;
                 let btnClass = "bg-[#0B1121] border-white/10 text-slate-300 hover:border-indigo-500/50 hover:bg-indigo-500/5";
-                
+
                 if (selectedAns) {
                   if (isCorrect) btnClass = "bg-emerald-500/20 border-emerald-500/50 text-emerald-400";
                   else if (isSelected) btnClass = "bg-red-500/20 border-red-500/50 text-red-400";
@@ -97,10 +97,10 @@ export const TriviaQuiz: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         ) : (
           <div className="p-10 flex flex-col items-center text-center">
             <div className="w-24 h-24 bg-amber-500/20 rounded-full flex items-center justify-center border border-amber-500/30 mb-6 relative">
-               <div className="absolute inset-0 rounded-full animate-ping bg-amber-500/20"></div>
-               <Trophy className="w-12 h-12 text-amber-400 relative z-10" />
+              <div className="absolute inset-0 rounded-full animate-ping bg-amber-500/20"></div>
+              <Trophy className="w-12 h-12 text-amber-400 relative z-10" />
             </div>
-            <h3 className="text-3xl font-black text-white mb-2">Matrix Completed</h3>
+            <h3 className="text-3xl font-black text-white mb-2">Quiz Completed</h3>
             <p className="text-slate-400 mb-8 font-mono">Your Intelligence Score: <span className="text-white font-black">{score} / {questions.length}</span></p>
             <button onClick={onClose} className="bg-white/10 hover:bg-white/20 text-white px-8 py-3 rounded-xl font-black uppercase tracking-widest transition-colors">
               Return to Dashboard

@@ -36,24 +36,23 @@ app.get('/api/db-matches', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM world_cup_matches ORDER BY match_date ASC, match_time ASC');
 
-    // For testing, you can override 'today' to simulate a future date.
-    // In production, this uses the real current date.
-    const today = new Date();
-    today.setHours(0, 0, 0, 0); // Set time to zero to compare dates only
+    // For testing, simulating today is June 8, 2026
+    const today = new Date('2026-06-08T12:00:00Z');
+    today.setHours(0, 0, 0, 0);
 
     const dynamicMatches = result.rows.map(row => {
-      // Get the date from the database row
       const matchDate = new Date(row.match_date);
       matchDate.setHours(0, 0, 0, 0);
 
       let status = 'UPCOMING';
 
-      // If the match is today, set status to LIVE
-      if (matchDate.getTime() === today.getTime()) {
+      // Simple time comparison
+      const matchTimeMs = matchDate.getTime();
+      const todayTimeMs = today.getTime();
+
+      if (matchTimeMs === todayTimeMs) {
         status = 'LIVE';
-      }
-      // If the match date has passed, set status to FT
-      else if (matchDate.getTime() < today.getTime()) {
+      } else if (matchTimeMs < todayTimeMs) {
         status = 'FT';
       }
 
@@ -62,7 +61,7 @@ app.get('/api/db-matches', async (req, res) => {
         competition: row.competition,
         status: status,
         time: status === 'FT' ? 'FT' : (status === 'LIVE' ? '45' : row.match_time),
-        date: row.match_date,
+        date: matchDate.toISOString().split('T')[0], // Return clean YYYY-MM-DD string
         homeTeam: row.home_team,
         awayTeam: row.away_team,
         homeScore: row.home_score || 0,
