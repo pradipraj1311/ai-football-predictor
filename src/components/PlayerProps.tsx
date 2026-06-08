@@ -1,5 +1,11 @@
 import React from 'react';
 import { Target, Zap, TrendingUp, AlertCircle, Coins, Activity } from 'lucide-react';
+import { GLOBAL_TEAMS_DIRECTORY } from '../data';
+
+const teamLogoMap = GLOBAL_TEAMS_DIRECTORY.reduce((acc, team) => {
+    acc[team.code] = team.logo;
+    return acc;
+}, {} as Record<string, string>);
 
 export const PlayerProps: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     // Simulated AI Prop Data for Premium Feel
@@ -44,7 +50,11 @@ export const PlayerProps: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {propsData.map((prop, idx) => (
-                        <div key={idx} className="bg-slate-900/50 border border-white/5 rounded-2xl p-6 relative overflow-hidden group hover:border-white/10 transition-colors shadow-xl">
+                        <div
+                            key={idx}
+                            className="bg-slate-900/50 border border-white/5 rounded-2xl p-6 relative overflow-hidden group hover:border-white/10 transition-colors shadow-xl animate-fade-in-up"
+                            style={{ animationDelay: `${idx * 100}ms` }}
+                        >
                             {/* Premium Glow Effect */}
                             <div className={`absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none ${prop.color === 'emerald' ? 'bg-emerald-500/10' : prop.color === 'blue' ? 'bg-blue-500/10' : 'bg-red-500/10'
                                 }`}></div>
@@ -52,7 +62,9 @@ export const PlayerProps: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                             <div className="flex justify-between items-start mb-4 relative z-10">
                                 <div>
                                     <h3 className="text-xl font-black text-white">{prop.player}</h3>
-                                    <span className="text-[10px] font-mono font-bold bg-white/5 border border-white/10 text-slate-400 px-1.5 py-0.5 rounded mt-1 inline-block">{prop.team}</span>
+                                    <span className="text-[10px] font-mono font-bold bg-white/5 border border-white/10 text-slate-400 px-1.5 py-0.5 rounded mt-1 inline-flex items-center gap-1.5">
+                                        {teamLogoMap[prop.team]} {prop.team}
+                                    </span>
                                 </div>
                                 <div className="text-right">
                                     <span className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-0.5">Odds</span>
@@ -89,8 +101,8 @@ export const PlayerProps: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                                 <p className="text-xs text-slate-400 leading-relaxed mb-4">{prop.analysis}</p>
 
                                 <div className={`inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded border ${prop.color === 'emerald' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
-                                        prop.color === 'blue' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
-                                            'bg-red-500/10 text-red-400 border-red-500/20'
+                                    prop.color === 'blue' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
+                                        'bg-red-500/10 text-red-400 border-red-500/20'
                                     }`}>
                                     <AlertCircle className="w-3 h-3" /> AI Edge: {prop.edge}
                                 </div>

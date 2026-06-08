@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Match } from '../types';
 import { Cpu, Target, TrendingUp, Zap, Sparkles, Star, AlertTriangle, Activity } from 'lucide-react';
+import { GLOBAL_TEAMS_DIRECTORY } from '../data';
+
+const teamLogoMap = GLOBAL_TEAMS_DIRECTORY.reduce((acc, team) => {
+  acc[team.name] = team.logo;
+  return acc;
+}, {} as Record<string, string>);
 
 export const AIPredictor: React.FC<{ match: Match }> = ({ match }) => {
   const [data, setData] = useState<any>(null);
@@ -62,7 +68,7 @@ export const AIPredictor: React.FC<{ match: Match }> = ({ match }) => {
   return (
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 w-full">
       {/* Panel 1: Match Forecaster */}
-      <div className="bg-[#0B1121] border border-white/5 rounded-2xl flex flex-col overflow-hidden shadow-2xl relative">
+      <div className="bg-[#0B1121] border border-white/5 rounded-2xl flex flex-col overflow-hidden shadow-2xl relative animate-fade-in-up">
         {loading && (
           <div className="absolute top-0 left-0 right-0 h-0.5 bg-indigo-500/20 overflow-hidden z-20">
             <div className="h-full bg-indigo-500 animate-[pulse_1s_ease-in-out_infinite] w-1/3"></div>
@@ -169,7 +175,7 @@ export const AIPredictor: React.FC<{ match: Match }> = ({ match }) => {
       </div>
 
       {/* Panel 2: Fantasy Advisory Starters */}
-      <div className="bg-[#0B1121] border border-white/5 rounded-2xl flex flex-col overflow-hidden shadow-2xl">
+      <div className="bg-[#0B1121] border border-white/5 rounded-2xl flex flex-col overflow-hidden shadow-2xl animate-fade-in-up" style={{ animationDelay: '100ms' }}>
         <div className="bg-gradient-to-r from-emerald-900/20 to-transparent p-4 border-b border-white/5 flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-emerald-400 fill-emerald-400/20" />
           <h3 className="text-sm font-black text-white uppercase tracking-wider">AI Lineup Advisor</h3>
@@ -195,7 +201,9 @@ export const AIPredictor: React.FC<{ match: Match }> = ({ match }) => {
                 <div className="flex justify-between items-start">
                   <div className="flex flex-col">
                     <span className="font-bold text-white text-sm">{player.name}</span>
-                    <span className="text-[9px] text-slate-500 font-mono uppercase tracking-wider mt-0.5">{player.team}</span>
+                    <span className="text-[9px] text-slate-500 font-mono uppercase tracking-wider mt-0.5 flex items-center gap-1.5">
+                      {teamLogoMap[player.team]} {player.team}
+                    </span>
                   </div>
                   <div className="flex gap-1 items-center bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded font-mono font-bold">
                     <Star className="w-3 h-3 fill-emerald-500 text-emerald-500" /> {player.rating}

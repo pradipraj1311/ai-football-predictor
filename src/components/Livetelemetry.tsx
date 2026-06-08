@@ -31,28 +31,28 @@ export const LiveTelemetry: React.FC<{ match: Match }> = ({ match }) => {
           <h4 className="flex items-center gap-2 text-[10px] font-black text-slate-400 tracking-widest uppercase mb-6">
             <BarChart3 className="w-3.5 h-3.5 text-blue-400" /> Attack Momentum (Last 15 Mins)
           </h4>
-          
+
           <div className="h-32 flex items-end justify-between gap-1 border-y border-white/5 py-2 relative">
             {/* 0-Line Indicator */}
             <div className="absolute top-1/2 left-0 right-0 h-px bg-slate-700/50 border-dashed z-0"></div>
-            
+
             {momentumBars.map((val, i) => (
               <div key={i} className="w-full relative flex flex-col justify-center items-center h-full z-10 group">
                 {val > 0 ? (
-                  <div 
-                    className="w-full bg-emerald-500/80 rounded-t-sm absolute bottom-1/2 group-hover:bg-emerald-400 transition-colors shadow-[0_0_8px_rgba(16,185,129,0.2)]" 
+                  <div
+                    className="w-full bg-emerald-500/80 rounded-t-sm absolute bottom-1/2 group-hover:bg-emerald-400 transition-colors shadow-[0_0_8px_rgba(16,185,129,0.2)]"
                     style={{ height: `${val / 2}%` }}
                   ></div>
                 ) : (
-                  <div 
-                    className="w-full bg-blue-500/80 rounded-b-sm absolute top-1/2 group-hover:bg-blue-400 transition-colors shadow-[0_0_8px_rgba(59,130,246,0.2)]" 
+                  <div
+                    className="w-full bg-blue-500/80 rounded-b-sm absolute top-1/2 group-hover:bg-blue-400 transition-colors shadow-[0_0_8px_rgba(59,130,246,0.2)]"
                     style={{ height: `${Math.abs(val) / 2}%` }}
                   ></div>
                 )}
               </div>
             ))}
           </div>
-          
+
           <div className="flex justify-between text-[9px] font-mono font-bold text-slate-500 mt-3 uppercase tracking-wider">
             <span className="text-emerald-500/70">{match.homeTeam.name} Pressure</span>
             <span className="text-blue-500/70">{match.awayTeam.name} Pressure</span>
@@ -69,8 +69,8 @@ export const LiveTelemetry: React.FC<{ match: Match }> = ({ match }) => {
               <span className="font-mono">{awayPossession}%</span>
             </div>
             <div className="h-2 flex rounded-full overflow-hidden bg-[#0f172a] shadow-inner">
-              <div style={{ width: `${homePossession}%` }} className="bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.3)]"></div>
-              <div style={{ width: `${awayPossession}%` }} className="bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.3)]"></div>
+              <div style={{ width: `${homePossession}%` }} className="bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.3)] transition-all duration-500 ease-out"></div>
+              <div style={{ width: `${awayPossession}%` }} className="bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.3)] transition-all duration-all duration-500 ease-out"></div>
             </div>
           </div>
 
@@ -84,8 +84,8 @@ export const LiveTelemetry: React.FC<{ match: Match }> = ({ match }) => {
               <span className="font-mono">{match.awayScore * 12 + 18}</span>
             </div>
             <div className="h-2 flex rounded-full overflow-hidden bg-[#0f172a] shadow-inner">
-              <div style={{ width: `${homeAdvantage ? 65 : 40}%` }} className="bg-emerald-500"></div>
-              <div style={{ width: `${homeAdvantage ? 35 : 60}%` }} className="bg-blue-500"></div>
+              <div style={{ width: `${homeAdvantage ? 65 : 40}%` }} className="bg-emerald-500 transition-all duration-500 ease-out"></div>
+              <div style={{ width: `${homeAdvantage ? 35 : 60}%` }} className="bg-blue-500 transition-all duration-500 ease-out"></div>
             </div>
           </div>
 
@@ -99,8 +99,8 @@ export const LiveTelemetry: React.FC<{ match: Match }> = ({ match }) => {
               <span className="font-mono">{match.awayScore + 2}</span>
             </div>
             <div className="h-2 flex rounded-full overflow-hidden bg-[#0f172a] shadow-inner">
-              <div style={{ width: `${homeAdvantage ? 70 : 30}%` }} className="bg-emerald-500"></div>
-              <div style={{ width: `${homeAdvantage ? 30 : 70}%` }} className="bg-blue-500"></div>
+              <div style={{ width: `${homeAdvantage ? 70 : 30}%` }} className="bg-emerald-500 transition-all duration-500 ease-out"></div>
+              <div style={{ width: `${homeAdvantage ? 30 : 70}%` }} className="bg-blue-500 transition-all duration-500 ease-out"></div>
             </div>
           </div>
         </div>

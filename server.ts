@@ -133,7 +133,7 @@ const PREDICT_CACHE_DURATION = 3 * 60 * 1000;
 app.post('/api/predict', async (req, res) => {
   try {
     const { match } = req.body;
-    
+
     if (!match || !match.id) {
       return res.status(400).json({ error: "Invalid match payload provided." });
     }
@@ -143,7 +143,7 @@ app.post('/api/predict', async (req, res) => {
     const now = Date.now();
 
     if (
-      predictionCache[matchId] && 
+      predictionCache[matchId] &&
       (now - predictionCache[matchId].timestamp < PREDICT_CACHE_DURATION) &&
       predictionCache[matchId].scoreHash === currentScoreHash
     ) {
@@ -198,7 +198,7 @@ app.post('/api/predict', async (req, res) => {
     }`;
 
     // --- THE CASCADE ENGINE (SMART FALLBACK) ---
-    // આ એરે (Array) માં આપણે મોડલ્સ ની પ્રાયોરિટી નક્કી કરી છે.
+    // In this array, we define the priority of the models to try.
     const modelsToTry = [
       'gemini-3.5-flash',       // 1st Priority (Best Quality)
       'gemini-3.1-flash-lite',  // 2nd Priority (500 RPD Limit - Very safe)
@@ -212,7 +212,7 @@ app.post('/api/predict', async (req, res) => {
     for (const modelName of modelsToTry) {
       try {
         console.log(`[Neural Engine] Attempting to generate prediction using model: ${modelName}`);
-        
+
         const response = await ai.models.generateContent({
           model: modelName,
           contents: prompt,
@@ -223,18 +223,18 @@ app.post('/api/predict', async (req, res) => {
 
         parsedData = JSON.parse(response.text || '{}');
         successfulModel = modelName;
-        break; // જો મોડલ સક્સેસ થાય તો લૂપ તોડી નાખો (stop trying other models)
+        break; // If a model succeeds, break the loop (stop trying other models).
 
       } catch (err: any) {
-        // જો લિમિટ પૂરી થઈ ગઈ હોય (429) તો વોર્નિંગ આપો અને નેક્સ્ટ મોડલ ટ્રાય કરો
+        // If the limit is reached (429), give a warning and try the next model.
         console.warn(`[Neural Engine Warning] Model ${modelName} failed (likely quota exceeded). Error: ${err.message}`);
-        continue; 
+        continue;
       }
     }
 
-    // જો ચારેય મોડલ લિમિટ પૂરી કરી દે (જે બહુ મુશ્કેલ છે), તો જ આ એરર આવશે
+    // This error will only occur if all four models exhaust their limits (which is very unlikely).
     if (!parsedData) {
-       throw new Error("All Gemini models exhausted their quota or failed.");
+      throw new Error("All Gemini models exhausted their quota or failed.");
     }
 
     console.log(`[Success] Tactical analysis generated using: ${successfulModel}`);

@@ -1,23 +1,29 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { MatchCard } from './components/MatchCard';
 import { AIPredictor } from './components/AIPredictor';
-import { LiveTelemetry } from './components/LiveTelemetry'; // <-- GRAPH IMPORTED HERE
+import { LiveTelemetry } from './components/LiveTelemetry';
 import { StandingsGrid } from './components/StandingsGrid';
 import { PlayerProps } from './components/PlayerProps';
 import { TriviaQuiz } from './components/TriviaQuiz';
+import { NewsTicker } from './components/NewsTicker'; // <-- Ticker Imported
 import { Match } from './types';
 import { GLOBAL_TEAMS_DIRECTORY, INITIAL_MATCHES, WORLD_CUP_STANDINGS, FootballTeamProfile } from './data';
-import { BrainCircuit, Shield, Calendar, History, Globe, Coins, CloudRain, Thermometer } from 'lucide-react';
+import { BrainCircuit, Shield, Calendar, History, Globe, Coins, CloudRain, Thermometer, BellRing, Target, ListOrdered, Activity } from 'lucide-react';
 
 function App() {
   const [matches, setMatches] = useState<Match[]>(INITIAL_MATCHES);
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   const [selectedTeam, setSelectedTeam] = useState<FootballTeamProfile | null>(null);
-  const [activeTab, setActiveTab] = useState<'live' | 'upcoming' | 'results' | 'teams'>('live');
+  const [activeTab, setActiveTab] = useState<'live' | 'upcoming' | 'results' | 'teams' | 'standings'>('live');
   const [timeLeft, setTimeLeft] = useState({ d: 0, h: 0, m: 0, s: 0 });
   const [showProps, setShowProps] = useState(false);
   const [showQuiz, setShowQuiz] = useState(false);
 
+  // Goal Alerts State & Ref
+  const [alerts, setAlerts] = useState<any[]>([]);
+  const previousMatchesRef = useRef<Match[]>([]);
+
+  // World Cup Countdown
   useEffect(() => {
     const targetDate = new Date('2026-06-11T00:00:00Z').getTime();
     const interval = setInterval(() => {
@@ -35,6 +41,7 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
+  // Fetch Live Matches & Goal Tracker Engine
   useEffect(() => {
     const fetchMatches = () => {
       fetch('/api/live-matches')
@@ -43,6 +50,29 @@ function App() {
           const liveData = data.matches || [];
           const updated = [...liveData, ...INITIAL_MATCHES.filter(m => m.status !== 'LIVE')];
           setMatches(updated);
+
+          // Goal Detection Logic
+          const newAlerts: any[] = [];
+          liveData.forEach((newMatch: any) => {
+            const oldMatch = previousMatchesRef.current.find(m => m.id === newMatch.id);
+            if (oldMatch) {
+              if (newMatch.homeScore > oldMatch.homeScore) {
+                newAlerts.push({ id: Date.now(), matchName: `${newMatch.homeTeam.code} v ${newMatch.awayTeam.code}`, message: `GOAL! ${newMatch.homeTeam.name} [${newMatch.homeScore}] - ${newMatch.awayScore}`, minute: newMatch.minute });
+              }
+              if (newMatch.awayScore > oldMatch.awayScore) {
+                newAlerts.push({ id: Date.now() + 1, matchName: `${newMatch.homeTeam.code} v ${newMatch.awayTeam.code}`, message: `GOAL! ${newMatch.homeScore} - [${newMatch.awayScore}] ${newMatch.awayTeam.name}`, minute: newMatch.minute });
+              }
+            }
+          });
+
+          if (newAlerts.length > 0) {
+            setAlerts(prev => [...prev, ...newAlerts]);
+            setTimeout(() => {
+              setAlerts(prev => prev.filter(a => !newAlerts.map(n => n.id).includes(a.id)));
+            }, 6000); // Remove toast after 6 seconds
+          }
+
+          previousMatchesRef.current = liveData; // Update Tracker
 
           setSelectedMatch(prev => {
             if (!prev) return liveData[0] || updated.find(m => m.status === 'UPCOMING');
@@ -56,6 +86,15 @@ function App() {
     const interval = setInterval(fetchMatches, 60000);
     return () => clearInterval(interval);
   }, []);
+
+  // Developer Test Function to Simulate a Goal
+  const triggerTestGoal = () => {
+    const testAlert = { id: Date.now(), matchName: "ARG v BRA", message: "GOAL! Argentina [1] - 0 Brazil", minute: 42 };
+    setAlerts(prev => [...prev, testAlert]);
+    setTimeout(() => {
+      setAlerts(prev => prev.filter(a => a.id !== testAlert.id));
+    }, 6000);
+  };
 
   const filteredMatches = matches.filter((m) => {
     if (activeTab === 'live') return m.status === 'LIVE';
@@ -97,7 +136,32 @@ function App() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-indigo-500/30">
+    <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-indigo-500/30 overflow-x-hidden">
+
+      {/* Toast Notification CSS Animation */}
+      <style>
+        {`
+          @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+          }
+          .animate-fade-in-up {
+            animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            opacity: 0;
+          }
+          @keyframes slideInRight {
+            from { transform: translateX(120%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+          }
+          .animate-slide-in {
+            animation: slideInRight 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          }
+        `}
+      </style>
+
+      {/* NEW: Ticker Header */}
+      <NewsTicker />
+
       <nav className="sticky top-0 z-50 bg-slate-950/80 backdrop-blur-xl border-b border-white/5 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 shadow-lg shadow-indigo-500/20">
@@ -110,6 +174,9 @@ function App() {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* HIDDEN DEV BUTTON: Click to test Goal UI */}
+          <button onClick={triggerTestGoal} className="text-[10px] text-slate-600 hover:text-emerald-400 font-bold uppercase px-2"><BellRing className="w-4 h-4" /></button>
+
           <button
             onClick={() => setShowQuiz(true)}
             className="text-[10px] font-black text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-3 py-2 rounded-lg uppercase tracking-widest hover:bg-indigo-500/20 transition-colors flex items-center gap-1.5"
@@ -125,51 +192,68 @@ function App() {
         </div>
       </nav>
 
-      {showProps && <PlayerProps onClose={() => setShowProps(false)} />}
-      {showQuiz && <TriviaQuiz onClose={() => setShowQuiz(false)} />}
-
-      <main className="max-w-[1600px] mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        <div className="lg:col-span-4 xl:col-span-3 flex flex-col gap-4">
-          <div className="bg-[#0B1121] border border-white/5 p-1.5 rounded-xl grid grid-cols-4 gap-1 text-center">
+      <main className="max-w-[1600px] mx-auto p-4 md:p-6 pb-24 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start relative min-h-screen">
+        <div className="lg:col-span-4 xl:col-span-3 flex flex-col gap-4 sticky top-24">
+          <div className="bg-[#0B1121] border border-white/5 p-1.5 rounded-xl grid grid-cols-5 gap-1 text-center">
             <button onClick={() => { setActiveTab('live'); setSelectedTeam(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'live' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}>
               <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span> Live
             </button>
             <button onClick={() => { setActiveTab('upcoming'); setSelectedTeam(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'upcoming' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}>
-              <Calendar className="w-3 h-3" /> Upcmg
+              <Calendar className="w-3 h-3" /> Upcoming
             </button>
             <button onClick={() => { setActiveTab('results'); setSelectedTeam(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'results' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}>
               <History className="w-3 h-3" /> Results
+            </button>
+            <button onClick={() => { setActiveTab('standings'); setSelectedTeam(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'standings' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}>
+              <ListOrdered className="w-3 h-3" /> Table
             </button>
             <button onClick={() => { setActiveTab('teams'); setSelectedTeam(GLOBAL_TEAMS_DIRECTORY[0]); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'teams' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}>
               <Shield className="w-3 h-3" /> Teams
             </button>
           </div>
 
+          {/* List Renderer Frame */}
           <div className="flex flex-col gap-2 max-h-[600px] overflow-y-auto pr-1">
-            {activeTab !== 'teams' ? (
+            {activeTab === 'standings' ? (
+              // Fix 1: Add an info card to fill the empty space
+              <div className="bg-indigo-600/10 border border-indigo-500/20 rounded-xl p-6 text-center shadow-inner flex flex-col items-center justify-center min-h-[300px]">
+                <Globe className="w-12 h-12 text-indigo-400 mb-4 animate-[spin_10s_linear_infinite]" />
+                <h4 className="text-sm font-black text-white uppercase tracking-widest mb-2">Global Group Stage</h4>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  The top two teams from each group, along with the eight best third-placed teams, will advance to the Round of 32.
+                </p>
+              </div>
+            ) : activeTab !== 'teams' ? (
               filteredMatches.length === 0 && activeTab === 'live' ? (
-                <div className="text-xs text-slate-500 font-mono text-center p-8 bg-[#0B1121] rounded-xl border border-white/5 flex flex-col items-center gap-2">
+                <div className="text-xs text-slate-500 text-center p-8 bg-[#0B1121] rounded-xl border border-white/5 flex flex-col items-center gap-2">
                   <span className="text-2xl">⚽</span>
-                  <span>Off-Season Mode Active.</span>
+                  {/* Fix 2: Simple user-friendly message */}
+                  <span className="font-bold">No Live Matches Right Now.</span>
+                  <span className="text-[10px] mt-1">Check the Upcoming tab for the next games!</span>
                 </div>
               ) : filteredMatches.length === 0 ? (
-                <div className="text-xs text-slate-500 font-mono text-center p-8 bg-[#0B1121] rounded-xl border border-white/5">No active fixtures in this matrix.</div>
+                // Fix 3: Simple message
+                <div className="text-xs text-slate-500 text-center p-8 bg-[#0B1121] rounded-xl border border-white/5 font-bold">
+                  No matches scheduled for this category yet.
+                </div>
               ) : (
-                filteredMatches.map((match) => (
-                  <MatchCard
-                    key={match.id}
-                    match={match}
-                    isSelected={selectedMatch?.id === match.id && !selectedTeam}
-                    onSelect={() => { setSelectedMatch(match); setSelectedTeam(null); }}
-                  />
+                filteredMatches.map((match, index) => (
+                  <div key={match.id} className="animate-fade-in-up" style={{ animationDelay: `${index * 50}ms` }}>
+                    <MatchCard
+                      match={match}
+                      isSelected={selectedMatch?.id === match.id && !selectedTeam}
+                      onSelect={() => { setSelectedMatch(match); setSelectedTeam(null); }}
+                    />
+                  </div>
                 ))
               )
             ) : (
-              GLOBAL_TEAMS_DIRECTORY.map((team) => (
+              GLOBAL_TEAMS_DIRECTORY.map((team, index) => (
                 <div
                   key={team.id}
                   onClick={() => setSelectedTeam(team)}
-                  className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${selectedTeam?.id === team.id ? 'bg-gradient-to-r from-indigo-950/40 to-[#0B1121] border-indigo-500/50' : 'bg-[#0B1121] border-white/5 hover:border-indigo-500/30'}`}
+                  className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all animate-fade-in-up ${selectedTeam?.id === team.id ? 'bg-gradient-to-r from-indigo-950/40 to-[#0B1121] border-indigo-500/50' : 'bg-[#0B1121] border-white/5 hover:border-indigo-500/30'}`}
+                  style={{ animationDelay: `${index * 30}ms` }}
                 >
                   <div className="flex items-center gap-3">
                     <span className="text-xl">{team.logo}</span>
@@ -180,20 +264,41 @@ function App() {
               ))
             )}
           </div>
-
-          {/* NEW: Standings Table Placed Here */}
-          <StandingsGrid standings={WORLD_CUP_STANDINGS} />
         </div>
 
         <div className="lg:col-span-8 xl:col-span-9 flex flex-col gap-6">
-          {activeTab === 'teams' && selectedTeam ? (
-            <div className="bg-[#0B1121] border border-white/5 rounded-2xl p-6 relative overflow-hidden shadow-2xl">
-              <div className="absolute top-0 right-0 -mt-16 -mr-16 w-64 h-64 bg-indigo-500/5 rounded-full blur-3xl"></div>
-              <div className="flex items-center gap-4 mb-6 relative z-10">
-                <span className="text-6xl p-4 bg-slate-900 rounded-2xl border border-white/5 shadow-inner">{selectedTeam.logo}</span>
-                <div>
-                  <h2 className="text-2xl font-black text-white tracking-tight">{selectedTeam.name}</h2>
-                  <p className="text-xs text-slate-400 font-mono mt-0.5">{selectedTeam.country} • Founded in {selectedTeam.founded}</p>
+          {activeTab === 'standings' ? (
+            <StandingsGrid standings={WORLD_CUP_STANDINGS} />
+          ) : activeTab === 'teams' && selectedTeam ? (
+            <div className="flex flex-col gap-6">
+              <div className="bg-[#0B1121] border border-white/5 rounded-2xl p-6 relative overflow-hidden shadow-2xl">
+                <div className="absolute top-0 right-0 -mt-16 -mr-16 w-64 h-64 bg-indigo-500/5 rounded-full blur-3xl"></div>
+                <div className="flex items-center gap-4 mb-6 relative z-10">
+                  <span className="text-6xl p-4 bg-slate-900 rounded-2xl border border-white/5 shadow-inner">{selectedTeam.logo}</span>
+                  <div>
+                    <h2 className="text-2xl font-black text-white tracking-tight">{selectedTeam.name}</h2>
+                    <p className="text-xs text-slate-400 font-mono mt-0.5 flex items-center gap-1.5">{selectedTeam.logo} {selectedTeam.country} • Founded in {selectedTeam.founded}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Teams UI Filler */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-[#0B1121] border border-white/5 rounded-2xl p-6 shadow-xl">
+                  <h4 className="flex items-center gap-2 text-[10px] font-black text-slate-400 tracking-widest uppercase mb-4">
+                    <Activity className="w-4 h-4 text-emerald-400" /> Form Analytics
+                  </h4>
+                  <div className="flex gap-2">
+                    {selectedTeam.form.map((f, i) => (
+                      <span key={i} className={`w-8 h-8 rounded-lg text-xs font-black flex items-center justify-center font-mono ${f === 'W' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : f === 'D' ? 'bg-slate-500/20 text-slate-400 border border-white/10' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>{f}</span>
+                    ))}
+                  </div>
+                  <p className="text-xs text-slate-500 mt-4 leading-relaxed">The Neural Engine is currently tracking training data and historical metrics for {selectedTeam.name} ahead of the upcoming fixtures.</p>
+                </div>
+                <div className="bg-[#0B1121] border border-white/5 rounded-2xl p-6 shadow-xl flex flex-col justify-center items-center text-center">
+                  <Shield className="w-10 h-10 text-indigo-500/30 mb-3" />
+                  <h4 className="text-[10px] font-black text-slate-400 tracking-widest uppercase mb-2">Squad Roster Offline</h4>
+                  <p className="text-xs text-slate-500 font-mono">Official player registry will sync 48 hours prior to the tournament opening match.</p>
                 </div>
               </div>
             </div>
@@ -206,10 +311,10 @@ function App() {
                   <span className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider">{selectedMatch.competition}</span>
                   <span className={`text-[10px] font-black px-2.5 py-0.5 rounded border ${selectedMatch.status === 'LIVE' ? 'bg-red-500/10 text-red-400 border-red-500/20 animate-pulse' : selectedMatch.status === 'UPCOMING' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 'bg-white/5 text-slate-400 border-white/10'}`}>{selectedMatch.status}</span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex flex-col items-center gap-3 w-1/3">
-                    <span className="text-5xl">{selectedMatch.homeTeam.logo}</span>
-                    <span className="text-base font-black text-white">{selectedMatch.homeTeam.name}</span>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center justify-center gap-3 w-1/3 text-center">
+                    <span className="text-4xl">{selectedMatch.homeTeam.logo}</span>
+                    <span className="text-lg font-black text-white">{selectedMatch.homeTeam.name}</span>
                   </div>
                   <div className="flex flex-col items-center justify-center w-1/3">
                     {selectedMatch.status === 'LIVE' || selectedMatch.status === 'FT' ? (
@@ -220,26 +325,25 @@ function App() {
                       <div className="text-xl font-mono font-black text-indigo-400 bg-indigo-500/5 border border-indigo-500/10 px-4 py-1.5 rounded-xl tracking-wider">{selectedMatch.time}</div>
                     )}
                   </div>
-                  <div className="flex flex-col items-center gap-3 w-1/3">
-                    <span className="text-5xl">{selectedMatch.awayTeam.logo}</span>
-                    <span className="text-base font-black text-white">{selectedMatch.awayTeam.name}</span>
+                  <div className="flex items-center justify-center gap-3 w-1/3 text-center">
+                    <span className="text-4xl">{selectedMatch.awayTeam.logo}</span>
+                    <span className="text-lg font-black text-white">{selectedMatch.awayTeam.name}</span>
                   </div>
                 </div>
-              </div>
 
-              {/* NEW PREMIUM FEATURE: Match Conditions */}
-              <div className="flex gap-4 px-1">
-                <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest bg-[#0B1121] px-4 py-2 rounded-lg border border-white/5 shadow-md">
-                  <Thermometer className="w-3.5 h-3.5 text-red-400" /> Temp: 24°C (Optimal)
-                </div>
-                <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest bg-[#0B1121] px-4 py-2 rounded-lg border border-white/5 shadow-md">
-                  <CloudRain className="w-3.5 h-3.5 text-blue-400" /> Pitch: Wet (Fast Surface)
+                {/* Pitch Conditions */}
+                <div className="flex gap-4 justify-center mt-6 pt-6 border-t border-white/5">
+                  <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                    <Thermometer className="w-3.5 h-3.5 text-red-400" /> Temp: 24°C (Optimal)
+                  </div>
+                  <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                    <CloudRain className="w-3.5 h-3.5 text-blue-400" /> Pitch: Fast Surface
+                  </div>
                 </div>
               </div>
 
               <AIPredictor match={selectedMatch} />
 
-              {/* GRAPH PLACED CORRECTLY HERE */}
               {(selectedMatch.status === 'LIVE' || selectedMatch.status === 'FT') && (
                 <LiveTelemetry match={selectedMatch} />
               )}
@@ -247,6 +351,24 @@ function App() {
           ) : null}
         </div>
       </main>
+
+      {/* GOAL ALERT TOAST NOTIFICATIONS */}
+      <div className="fixed bottom-6 right-6 z-[110] flex flex-col gap-3 pointer-events-none">
+        {alerts.map(alert => (
+          <div key={alert.id} className="bg-[#0B1121] border border-emerald-500/50 p-4 rounded-2xl shadow-[0_10px_40px_rgba(16,185,129,0.3)] flex gap-4 items-center animate-slide-in pointer-events-auto">
+            <div className="bg-emerald-500/20 p-2.5 rounded-full border border-emerald-500/30">
+              <Target className="w-6 h-6 text-emerald-400" />
+            </div>
+            <div>
+              <span className="text-[10px] text-emerald-400 font-black uppercase tracking-widest block mb-0.5">{alert.matchName} • {alert.minute}'</span>
+              <span className="text-sm font-black text-white tracking-wide">{alert.message}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {showProps && <PlayerProps onClose={() => setShowProps(false)} />}
+      {showQuiz && <TriviaQuiz onClose={() => setShowQuiz(false)} />}
     </div>
   );
 }
