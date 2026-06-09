@@ -248,7 +248,7 @@ app.post('/api/predict', async (req, res) => {
   }
 });
 
-// ✅ FIX: Pure Express Server (No Vite/Rollup imports to prevent Vercel crashes)
+// Pure Express Server (No Vite/Rollup imports to prevent Vercel crashes)
 if (process.env.NODE_ENV !== 'production') {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`API Server running on port ${PORT}`);
@@ -257,4 +257,3 @@ if (process.env.NODE_ENV !== 'production') {
 
 // Vercel Serverless Export
 export default app;
-module.exports = app;
