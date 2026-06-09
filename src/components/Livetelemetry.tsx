@@ -105,6 +105,7 @@ export const LiveTelemetry: React.FC<{ match: Match }> = ({ match }) => {
           </div>
         </div>
       </div>
+         
     </div>
   );
 };
