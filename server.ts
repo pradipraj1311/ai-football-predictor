@@ -188,16 +188,15 @@ app.post('/api/predict', async (req, res) => {
   }
 });
 
-async function startServer() {
-  if (process.env.NODE_ENV !== 'production') {
+// --- MODIFIED FOR VERCEL SERVERLESS ---
+if (process.env.NODE_ENV !== 'production') {
+  async function startLocalServer() {
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
     app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => res.sendFile(path.join(distPath, 'index.html')));
+    app.listen(PORT, '0.0.0.0', () => console.log(`Local Server listening on port ${PORT}`));
   }
-  app.listen(PORT, '0.0.0.0', () => console.log(`Server listening on port ${PORT}`));
+  startLocalServer();
 }
 
-startServer();
+// Export app for Vercel serverless architecture
+export default app;
