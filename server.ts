@@ -12,8 +12,11 @@ const PORT = 3000;
 
 // --- SECURE PostgreSQL Connection ---
 const pool = new Pool({
-  connectionString: process.env.DB_URL, // અહીં સીધો DB_URL વાપરો
-  ssl: { rejectUnauthorized: false }
+  connectionString: process.env.DB_URL,
+  ssl: { rejectUnauthorized: false },
+  max: 1, // Only one connection is needed for Vercel
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000,
 });
 
 function getGeminiClient(): GoogleGenAI {
@@ -31,7 +34,10 @@ const CACHE_DURATION = 5 * 60 * 1000;
 app.get('/api/db-matches', async (req, res) => {
   const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' };
   try {
-    const result = await pool.query('SELECT * FROM world_cup_matches ORDER BY match_date ASC, match_time ASC');
+    // Vercel Fix: Explicitly connect and release to manage connections in a serverless environment
+    const client = await pool.connect();
+    const result = await client.query('SELECT * FROM world_cup_matches ORDER BY match_date ASC, match_time ASC');
+    client.release(); // Release the connection back to the pool
 
     // For testing, simulating today is June 8, 2026
     const today = new Date('2026-06-08T12:00:00Z');
