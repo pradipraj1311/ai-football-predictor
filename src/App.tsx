@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MatchCard } from './components/MatchCard';
 import { AIPredictor } from './components/AIPredictor';
-import { LiveTelemetry } from './components/Livetelemetry';
+import { LiveTelemetry } from './components/LiveTelemetry';
 import { StandingsGrid } from './components/StandingsGrid';
 import { PlayerProps } from './components/PlayerProps';
 import { TriviaQuiz } from './components/TriviaQuiz';
