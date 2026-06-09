@@ -1,20 +1,17 @@
 import express from 'express';
-import path from 'path';
-import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
-import { Pool } from 'pg'; // <-- NEW: PostgreSQL Driver
+import { Pool } from 'pg';
 
 dotenv.config();
 const app = express();
 app.use(express.json());
 const PORT = 3000;
 
-// --- SECURE PostgreSQL Connection ---
 const pool = new Pool({
   connectionString: process.env.DB_URL,
   ssl: { rejectUnauthorized: false },
-  max: 1, // Only one connection is needed for Vercel
+  max: 1,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,
 });
@@ -30,17 +27,21 @@ function getGeminiClient(): GoogleGenAI {
 let matchCache: { data: any; timestamp: number } | null = null;
 const CACHE_DURATION = 5 * 60 * 1000;
 
-// --- DYNAMIC DATABASE API (Time-Travel Logic) ---
-app.get('/api/db-matches', async (req, res) => {
-  const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' };
+// ✅ FIX 1: homeTeam/awayTeam now return full objects, not plain strings
+// This fixes "data not visible" — frontend expects match.homeTeam.name
+app.get('/api/db-matches', async (_req, res) => {
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Content-Type': 'application/json'
+  };
   try {
-    // Vercel Fix: Explicitly connect and release to manage connections in a serverless environment
     const client = await pool.connect();
-    const result = await client.query('SELECT * FROM world_cup_matches ORDER BY match_date ASC, match_time ASC');
-    client.release(); // Release the connection back to the pool
+    const result = await client.query(
+      'SELECT * FROM world_cup_matches ORDER BY match_date ASC, match_time ASC'
+    );
+    client.release();
 
-    // For testing, simulating today is June 8, 2026
-    const today = new Date('2026-06-08T12:00:00Z');
+    const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     const dynamicMatches = result.rows.map(row => {
@@ -48,27 +49,41 @@ app.get('/api/db-matches', async (req, res) => {
       matchDate.setHours(0, 0, 0, 0);
 
       let status = 'UPCOMING';
-
-      // Simple time comparison
-      const matchTimeMs = matchDate.getTime();
-      const todayTimeMs = today.getTime();
-
-      if (matchTimeMs === todayTimeMs) {
+      if (matchDate.getTime() === today.getTime()) {
         status = 'LIVE';
-      } else if (matchTimeMs < todayTimeMs) {
+      } else if (matchDate.getTime() < today.getTime()) {
         status = 'FT';
       }
 
+      // ✅ CRITICAL FIX: Return full team objects so frontend can access
+      // match.homeTeam.name, match.homeTeam.logo, match.homeTeam.code
+      const homeTeamName = typeof row.home_team === 'string' ? row.home_team : row.home_team?.name || 'Home';
+      const awayTeamName = typeof row.away_team === 'string' ? row.away_team : row.away_team?.name || 'Away';
+
       return {
         id: row.id,
-        competition: row.competition,
-        status: status,
-        time: status === 'FT' ? 'FT' : (status === 'LIVE' ? '45' : row.match_time),
-        date: matchDate.toISOString().split('T')[0], // Return clean YYYY-MM-DD string
-        homeTeam: row.home_team,
-        awayTeam: row.away_team,
-        homeScore: row.home_score || 0,
-        awayScore: row.away_score || 0
+        competition: row.competition || 'FIFA World Cup 2026',
+        status,
+        minute: status === 'LIVE' ? 45 : undefined,
+        time: status === 'FT' ? 'FT' : (status === 'LIVE' ? 'LIVE' : row.match_time),
+        date: matchDate.toISOString().split('T')[0],
+        // ✅ Full team objects — fixes blank data on frontend
+        homeTeam: {
+          id: row.home_team_id || homeTeamName.toLowerCase().replace(/\s/g, '-'),
+          name: homeTeamName,
+          code: row.home_team_code || homeTeamName.substring(0, 3).toUpperCase(),
+          logo: row.home_team_logo || '⚽',
+          form: row.home_team_form ? JSON.parse(row.home_team_form) : ['W', 'D', 'W', 'L', 'W']
+        },
+        awayTeam: {
+          id: row.away_team_id || awayTeamName.toLowerCase().replace(/\s/g, '-'),
+          name: awayTeamName,
+          code: row.away_team_code || awayTeamName.substring(0, 3).toUpperCase(),
+          logo: row.away_team_logo || '⚽',
+          form: row.away_team_form ? JSON.parse(row.away_team_form) : ['D', 'W', 'L', 'W', 'D']
+        },
+        homeScore: row.home_score ?? 0,
+        awayScore: row.away_score ?? 0,
       };
     });
 
@@ -79,8 +94,11 @@ app.get('/api/db-matches', async (req, res) => {
   }
 });
 
-app.get('/api/live-matches', async (req, res) => {
-  const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' };
+app.get('/api/live-matches', async (_req, res) => {
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Content-Type': 'application/json'
+  };
 
   if (matchCache && (Date.now() - matchCache.timestamp < CACHE_DURATION)) {
     return res.status(200).set(corsHeaders).json({ matches: matchCache.data, cached: true });
@@ -88,8 +106,14 @@ app.get('/api/live-matches', async (req, res) => {
 
   const minorLeagueFallback = [
     {
-      id: 'live-minor-1', competition: 'LaLiga 2, Promotion Playoffs', status: 'LIVE', minute: 82, time: 'LIVE', date: new Date().toISOString().split('T')[0],
-      homeScore: 1, awayScore: 1,
+      id: 'live-minor-1',
+      competition: 'LaLiga 2, Promotion Playoffs',
+      status: 'LIVE',
+      minute: 82,
+      time: 'LIVE',
+      date: new Date().toISOString().split('T')[0],
+      homeScore: 1,
+      awayScore: 1,
       homeTeam: { id: 'cas', name: 'Castellón', code: 'CAS', logo: '🛡️', form: ['D', 'W', 'W'] },
       awayTeam: { id: 'alm', name: 'Almería', code: 'ALM', logo: '⚔️', form: ['D', 'L', 'W'] }
     }
@@ -134,15 +158,31 @@ app.get('/api/live-matches', async (req, res) => {
         date: new Date().toISOString().split('T')[0],
         homeScore: event.homeScore?.current ?? event.homeScore?.display ?? 0,
         awayScore: event.awayScore?.current ?? event.awayScore?.display ?? 0,
-        homeTeam: { id: String(event.homeTeam?.id || 'h1'), name: event.homeTeam?.name || 'Home Team', code: event.homeTeam?.shortName || 'HOM', logo: '⚽', form: ['W', 'D', 'W'] },
-        awayTeam: { id: String(event.awayTeam?.id || 'a1'), name: event.awayTeam?.name || 'Away Team', code: event.awayTeam?.shortName || 'AWY', logo: '⚽', form: ['L', 'W', 'D'] }
+        homeTeam: {
+          id: String(event.homeTeam?.id || 'h1'),
+          name: event.homeTeam?.name || 'Home Team',
+          code: event.homeTeam?.shortName || 'HOM',
+          logo: '⚽',
+          form: ['W', 'D', 'W']
+        },
+        awayTeam: {
+          id: String(event.awayTeam?.id || 'a1'),
+          name: event.awayTeam?.name || 'Away Team',
+          code: event.awayTeam?.shortName || 'AWY',
+          logo: '⚽',
+          form: ['L', 'W', 'D']
+        }
       };
     });
 
     matchCache = { data: processedMatches, timestamp: Date.now() };
     res.status(200).set(corsHeaders).json({ matches: processedMatches, cached: false });
   } catch (error: any) {
-    res.status(200).set(corsHeaders).json({ matches: minorLeagueFallback, cached: false, warning: true });
+    res.status(200).set(corsHeaders).json({
+      matches: minorLeagueFallback,
+      cached: false,
+      warning: true
+    });
   }
 });
 
@@ -152,13 +192,19 @@ const PREDICT_CACHE_DURATION = 3 * 60 * 1000;
 app.post('/api/predict', async (req, res) => {
   try {
     const { match } = req.body;
-    if (!match || !match.id) return res.status(400).json({ error: "Invalid match payload provided." });
+    if (!match || !match.id) {
+      return res.status(400).json({ error: "Invalid match payload provided." });
+    }
 
     const matchId = String(match.id);
     const currentScoreHash = `${match.homeScore ?? 0}-${match.awayScore ?? 0}`;
     const now = Date.now();
 
-    if (predictionCache[matchId] && (now - predictionCache[matchId].timestamp < PREDICT_CACHE_DURATION) && predictionCache[matchId].scoreHash === currentScoreHash) {
+    if (
+      predictionCache[matchId] &&
+      (now - predictionCache[matchId].timestamp < PREDICT_CACHE_DURATION) &&
+      predictionCache[matchId].scoreHash === currentScoreHash
+    ) {
       return res.json({ prediction: predictionCache[matchId].data, cached: true });
     }
 
@@ -167,19 +213,30 @@ app.post('/api/predict', async (req, res) => {
     const isLateGame = (match.minute ?? 0) > 75;
     const isDraw = (match.homeScore ?? 0) === (match.awayScore ?? 0);
 
-    let tacticalContext = isEarlyGame ? "Analyze early setups." : (isLateGame && isDraw ? "Analyze desperation phase for a late winner." : "Analyze current game state and defense.");
+    const tacticalContext = isEarlyGame
+      ? "Analyze early setups."
+      : (isLateGame && isDraw
+        ? "Analyze desperation phase for a late winner."
+        : "Analyze current game state and defense.");
 
     const prompt = `You are a premium football tactical analyst. Analyze this match: ${match.homeTeam.name} (${match.homeScore}) vs ${match.awayTeam.name} (${match.awayScore}). Context: ${tacticalContext}. Respond strictly in this JSON format: {"winProbability": {"home": 50, "draw": 25, "away": 25}, "suggestedScore": "2-1", "analysis": "2 sentences.", "vulnerabilities": {"home": "weakness", "away": "weakness"}, "keyMatchups": [{"battle": "P1 vs P2", "impact": "Crucial", "detail": "why"}], "advisor": {"captain": "Name", "viceCaptain": "Name", "bestXI": [{"name": "P1", "team": "${match.homeTeam.name}", "rating": 8.9, "reason": "why"}]}}`;
 
-    const modelsToTry = ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-flash'];
+    // ✅ FIX: Correct Gemini model names
+    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
     let parsedData = null;
 
     for (const modelName of modelsToTry) {
       try {
-        const response = await ai.models.generateContent({ model: modelName, contents: prompt, config: { responseMimeType: 'application/json' } });
+        const response = await ai.models.generateContent({
+          model: modelName,
+          contents: prompt,
+          config: { responseMimeType: 'application/json' }
+        });
         parsedData = JSON.parse(response.text || '{}');
         break;
-      } catch (err) { continue; }
+      } catch (err) {
+        continue;
+      }
     }
 
     if (!parsedData) throw new Error("All Gemini models exhausted.");
@@ -191,15 +248,19 @@ app.post('/api/predict', async (req, res) => {
   }
 });
 
-// --- MODIFIED FOR VERCEL SERVERLESS ---
+// ✅ Local dev only — Vite middleware
 if (process.env.NODE_ENV !== 'production') {
-  async function startLocalServer() {
-    const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
+  (async () => {
+    const { createServer: createViteServer } = await import('vite');
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa'
+    });
     app.use(vite.middlewares);
-    app.listen(PORT, '0.0.0.0', () => console.log(`Local Server listening on port ${PORT}`));
-  }
-  startLocalServer();
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Local Server on http://localhost:${PORT}`);
+    });
+  })();
 }
 
-// Export app for Vercel serverless architecture
 export default app;
