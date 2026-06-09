@@ -263,4 +263,7 @@ if (process.env.NODE_ENV !== 'production') {
   })();
 }
 
+// Export the Express app for Vercel serverless architecture
+// This is crucial for Vercel's CommonJS environment to correctly pick up the app.
 export default app;
+module.exports = app;
