@@ -248,22 +248,13 @@ app.post('/api/predict', async (req, res) => {
   }
 });
 
-// ✅ Local dev only — Vite middleware
+// ✅ FIX: Pure Express Server (No Vite/Rollup imports to prevent Vercel crashes)
 if (process.env.NODE_ENV !== 'production') {
-  (async () => {
-    const { createServer: createViteServer } = await import('vite');
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa'
-    });
-    app.use(vite.middlewares);
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`Local Server on http://localhost:${PORT}`);
-    });
-  })();
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`API Server running on port ${PORT}`);
+  });
 }
 
-// Export the Express app for Vercel serverless architecture
-// This is crucial for Vercel's CommonJS environment to correctly pick up the app.
+// Vercel Serverless Export
 export default app;
 module.exports = app;
