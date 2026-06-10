@@ -13,25 +13,25 @@
       "use": "@vercel/node"
     }
   ],
-  "rewrites": [
+  "routes": [
     {
-      "source": "/api/(.*)",
-      "destination": "/server.ts"
+      "src": "/api/(.*)",
+      "dest": "/server.ts"
     },
     {
-      "source": "/((?!api/|sitemap\\.xml|robots\\.txt|.*\\.).*)",
-      "destination": "/index.html"
-    }
-  ],
-  "headers": [
+      "src": "/sitemap.xml",
+      "dest": "/server.ts"
+    },
     {
-      "source": "/sitemap.xml",
-      "headers": [
-        {
-          "key": "Content-Type",
-          "value": "application/xml"
-        }
-      ]
+      "src": "/robots.txt",
+      "dest": "/robots.txt"
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
     }
   ]
 }
