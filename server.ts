@@ -16,19 +16,19 @@ const pool = new Pool({
   connectionTimeoutMillis: 2000,
 });
 
-function getGeminiClient(): GoogleGenAI {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey.trim() === "") {
+function getGeminiClients(): GoogleGenAI[] {
+  const rawKeys = process.env.GEMINI_API_KEY;
+  if (!rawKeys || rawKeys.trim() === "") {
     throw new Error('GEMINI_API_KEY is missing.');
   }
-  return new GoogleGenAI({ apiKey });
+
+  const keys = rawKeys.split(',').map(k => k.trim()).filter(k => k !== "");
+  return keys.map(key => new GoogleGenAI({ apiKey: key }));
 }
 
 let matchCache: { data: any; timestamp: number } | null = null;
 const CACHE_DURATION = 5 * 60 * 1000;
 
-// ✅ FIX 1: homeTeam/awayTeam now return full objects, not plain strings
-// This fixes "data not visible" — frontend expects match.homeTeam.name
 app.get('/api/db-matches', async (_req, res) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -55,8 +55,6 @@ app.get('/api/db-matches', async (_req, res) => {
         status = 'FT';
       }
 
-      // ✅ CRITICAL FIX: Return full team objects so frontend can access
-      // match.homeTeam.name, match.homeTeam.logo, match.homeTeam.code
       const homeTeamName = typeof row.home_team === 'string' ? row.home_team : row.home_team?.name || 'Home';
       const awayTeamName = typeof row.away_team === 'string' ? row.away_team : row.away_team?.name || 'Away';
 
@@ -67,7 +65,6 @@ app.get('/api/db-matches', async (_req, res) => {
         minute: status === 'LIVE' ? 45 : undefined,
         time: status === 'FT' ? 'FT' : (status === 'LIVE' ? 'LIVE' : row.match_time),
         date: matchDate.toISOString().split('T')[0],
-        // ✅ Full team objects — fixes blank data on frontend
         homeTeam: {
           id: row.home_team_id || homeTeamName.toLowerCase().replace(/\s/g, '-'),
           name: homeTeamName,
@@ -207,8 +204,7 @@ app.post('/api/predict', async (req, res) => {
     ) {
       return res.json({ prediction: predictionCache[matchId].data, cached: true });
     }
-
-    const ai = getGeminiClient();
+    const clients = getGeminiClients();
     const isEarlyGame = (match.minute ?? 0) < 30;
     const isLateGame = (match.minute ?? 0) > 75;
     const isDraw = (match.homeScore ?? 0) === (match.awayScore ?? 0);
@@ -221,25 +217,39 @@ app.post('/api/predict', async (req, res) => {
 
     const prompt = `You are a premium football tactical analyst. Analyze this match: ${match.homeTeam.name} (${match.homeScore}) vs ${match.awayTeam.name} (${match.awayScore}). Context: ${tacticalContext}. Respond strictly in this JSON format: {"winProbability": {"home": 50, "draw": 25, "away": 25}, "suggestedScore": "2-1", "analysis": "2 sentences.", "vulnerabilities": {"home": "weakness", "away": "weakness"}, "keyMatchups": [{"battle": "P1 vs P2", "impact": "Crucial", "detail": "why"}], "advisor": {"captain": "Name", "viceCaptain": "Name", "bestXI": [{"name": "P1", "team": "${match.homeTeam.name}", "rating": 8.9, "reason": "why"}]}}`;
 
-    // ✅ FIX: Correct Gemini model names
-    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    const modelsToTry = ['gemini-2.5-flash', 'gemini-3.1-flash-lite', 'gemini-2.0-flash'];
     let parsedData = null;
+    let lastErrorMsg = "";
 
-    for (const modelName of modelsToTry) {
-      try {
-        const response = await ai.models.generateContent({
-          model: modelName,
-          contents: prompt,
-          config: { responseMimeType: 'application/json' }
-        });
-        parsedData = JSON.parse(response.text || '{}');
-        break;
-      } catch (err) {
-        continue;
+    // 🔥 Proper rotation logic
+    for (let i = 0; i < clients.length; i++) {
+      const ai = clients[i];
+      console.log(`Trying API Key #${i + 1}`); // This helps identify which key is being used in Vercel Logs
+
+      for (const modelName of modelsToTry) {
+        try {
+          const response = await ai.models.generateContent({
+            model: modelName,
+            contents: prompt,
+            config: { responseMimeType: 'application/json' }
+          });
+          parsedData = JSON.parse(response.text || '{}');
+          break; // Success -> break out of the model loop
+        } catch (err: any) {
+          lastErrorMsg = err.message;
+          // Only try the next model if it's a 429 (Rate Limit) or 503 (Overloaded) error
+          if (err.status === 429 || err.status === 503 || err.message.includes('exhausted') || err.message.includes('quota')) {
+            continue;
+          } else {
+            // If it's another serious error (like bad format), there's no point changing the model
+            break;
+          }
+        }
       }
+      if (parsedData) break; // Success -> break out of the key rotation loop as well
     }
 
-    if (!parsedData) throw new Error("All Gemini models exhausted.");
+    if (!parsedData) throw new Error("All keys and models cooling down.");
 
     predictionCache[matchId] = { data: parsedData, timestamp: now, scoreHash: currentScoreHash };
     res.json({ prediction: parsedData, cached: false });
@@ -248,12 +258,10 @@ app.post('/api/predict', async (req, res) => {
   }
 });
 
-// Pure Express Server (No Vite/Rollup imports to prevent Vercel crashes)
 if (process.env.NODE_ENV !== 'production') {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`API Server running on port ${PORT}`);
   });
 }
 
-// Vercel Serverless Export
 export default app;
