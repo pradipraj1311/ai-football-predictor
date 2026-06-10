@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Analytics } from "@vercel/analytics/next";
 import { MatchCard } from './components/MatchCard';
 import { AIPredictor } from './components/AIPredictor';
 import { LiveTelemetry } from './components/LiveTelemetry';
@@ -13,9 +12,10 @@ import { PrivacyPolicy } from './components/PrivacyPolicy';
 import { TermsOfService } from './components/TermsOfService';
 import { GLOBAL_TEAMS_DIRECTORY, WORLD_CUP_STANDINGS, FootballTeamProfile } from './data';
 import { BrainCircuit, Shield, Calendar, History, Globe, Coins, CloudRain, Thermometer, BellRing, Target, ListOrdered, Activity } from 'lucide-react';
+import { Analytics } from '@vercel/analytics/nuxt/runtime';
 
 function App() {
-  Analytics();
+  
   const [matches, setMatches] = useState<Match[]>([]);
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   const [standings, setStandings] = useState(WORLD_CUP_STANDINGS);
