@@ -183,6 +183,19 @@ export const AIPredictor: React.FC<{ match: Match }> = ({ match }) => {
               </div>
             </div>
 
+            {/* ⚠️ Legal Disclaimer Banner */}
+            <div className="mt-6 p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-start gap-3">
+              <span className="text-red-400 text-lg">⚠️</span>
+              <div>
+                <h4 className="text-red-400 text-xs font-bold uppercase tracking-wider mb-1">
+                  Important Disclaimer
+                </h4>
+                <p className="text-slate-400 text-[11px] leading-relaxed">
+                  E2match.ai is strictly for informational and entertainment purposes. We are <strong>NOT</strong> a gambling or betting site. AI-generated implied odds and predictions are simulations and do not guarantee real-world outcomes. We are not responsible for any financial decisions made based on this data. By using this platform, you agree to our <a href="/terms-of-service" className="text-indigo-400 hover:underline">Terms of Service</a>.
+                </p>
+              </div>
+            </div>
+
             <div className="pt-4 border-t border-white/5">
               <h4 className="flex items-center gap-2 text-[10px] font-black text-slate-400 tracking-widest uppercase mb-3">
                 <TrendingUp className="w-3.5 h-3.5 text-indigo-400" /> Live Matrix Overview
