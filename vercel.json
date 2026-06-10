@@ -1,37 +1,11 @@
 {
   "version": 2,
   "builds": [
-    {
-      "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "dist"
-      }
-    },
-    {
-      "src": "server.ts",
-      "use": "@vercel/node"
-    }
+    { "src": "package.json", "use": "@vercel/static-build", "config": { "distDir": "dist" } },
+    { "src": "server.ts", "use": "@vercel/node" }
   ],
   "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/server.ts"
-    },
-    {
-      "source": "/((?!api/|assets/|sitemap\\.xml|robots\\.txt).*)",
-      "destination": "/index.html"
-    }
-  ],
-  "headers": [
-    {
-      "source": "/sitemap.xml",
-      "headers": [
-        {
-          "key": "Content-Type",
-          "value": "application/xml"
-        }
-      ]
-    }
+    { "source": "/api/(.*)", "destination": "/server.ts" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

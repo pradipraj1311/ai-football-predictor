@@ -25,6 +25,9 @@ export default defineConfig({
             purpose: 'any maskable'
           }
         ]
+      },
+      workbox: {
+        navigateFallbackDenylist: [/^\/sitemap\.xml$/, /^\/robots\.txt$/]
       }
     })
   ],
