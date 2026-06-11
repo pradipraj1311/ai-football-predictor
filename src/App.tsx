@@ -7,6 +7,7 @@ import { PlayerProps } from './components/PlayerProps';
 import { TriviaQuiz } from './components/TriviaQuiz';
 import { NewsTicker } from './components/NewsTicker';
 import { Match } from './types';
+import FanPoll from './components/FanPoll';
 import { H2HMatrix } from './components/H2HMatrix';
 import { PrivacyPolicy } from './components/PrivacyPolicy';
 import { TermsOfService } from './components/TermsOfService';
@@ -340,6 +341,9 @@ function App() {
                     <H2HMatrix match={selectedMatch} />
                   </>
                 )}
+
+                {/* Display the new Fan Poll here */}
+                <FanPoll />
               </>
             ) : (
               <div className="text-center mt-20 text-slate-500">
