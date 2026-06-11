@@ -214,20 +214,30 @@ function App() {
       <NewsTicker />
 
       <nav className="sticky top-0 z-50 bg-slate-950/80 backdrop-blur-xl border-b border-white/5 px-6 py-4 flex items-center justify-between">
-        <a href="/" className="flex items-center gap-3">
-          <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 shadow-lg shadow-indigo-500/20">
-            <BrainCircuit className="w-6 h-6 text-white" />
+        <div className="flex items-center gap-8">
+          <a href="/" className="flex items-center gap-3">
+            <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 shadow-lg shadow-indigo-500/20">
+              <BrainCircuit className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-xl font-black text-white tracking-tight leading-none">E2match<span className="text-indigo-400">.ai</span></h1>
+              <p className="text-[10px] text-slate-400 font-mono uppercase tracking-widest mt-1">Live Intelligence</p>
+            </div>
+          </a>
+          
+          {/* Premium Navbar Buttons - Top Left */}
+          <div className="hidden lg:flex items-center gap-1.5 bg-slate-900/60 p-1.5 rounded-xl border border-white/10 shadow-[inset_0_0_15px_rgba(0,0,0,0.5)]">
+            <button onClick={triggerTestGoal} className="text-[10px] font-black text-slate-400 hover:text-white hover:bg-white/5 px-3 py-2 rounded-lg uppercase tracking-widest transition-all flex items-center gap-1.5"><BellRing className="w-3.5 h-3.5" /> Alerts</button>
+            <div className="w-px h-4 bg-white/10 mx-1"></div>
+            <button onClick={() => document.getElementById('fan-poll')?.scrollIntoView({ behavior: 'smooth' })} className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 rounded-lg uppercase tracking-widest hover:bg-emerald-500/20 hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] transition-all flex items-center gap-1.5"><Trophy className="w-3.5 h-3.5" /> Fan Poll</button>
+            <button onClick={() => setShowQuiz(true)} className="text-[10px] font-black text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-3 py-2 rounded-lg uppercase tracking-widest hover:bg-indigo-500/20 hover:shadow-[0_0_15px_rgba(99,102,241,0.2)] transition-all flex items-center gap-1.5"><BrainCircuit className="w-3.5 h-3.5" /> Trivia Quiz</button>
+            <button onClick={() => setShowProps(true)} className="text-[10px] font-black text-amber-400 bg-amber-500/10 border border-amber-500/20 px-3 py-2 rounded-lg uppercase tracking-widest hover:bg-amber-500/20 hover:shadow-[0_0_15px_rgba(245,158,11,0.2)] transition-all flex items-center gap-1.5"><Coins className="w-3.5 h-3.5" /> Player Props</button>
           </div>
-          <div>
-            <h1 className="text-xl font-black text-white tracking-tight leading-none">E2match<span className="text-indigo-400">.ai</span></h1>
-            <p className="text-[10px] text-slate-400 font-mono uppercase tracking-widest mt-1">Live Intelligence</p>
-          </div>
-        </a>
-        <div className="flex items-center gap-3">
-          <button onClick={triggerTestGoal} className="text-[10px] text-slate-600 hover:text-emerald-400 font-bold uppercase px-2"><BellRing className="w-4 h-4" /></button>
-          <button onClick={() => document.getElementById('fan-poll')?.scrollIntoView({ behavior: 'smooth' })} className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 rounded-lg uppercase tracking-widest hover:bg-emerald-500/20 transition-colors flex items-center gap-1.5"><Trophy className="w-3.5 h-3.5" /> Fan Poll</button>
-          <button onClick={() => setShowQuiz(true)} className="text-[10px] font-black text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-3 py-2 rounded-lg uppercase tracking-widest hover:bg-indigo-500/20 transition-colors flex items-center gap-1.5"><BrainCircuit className="w-3.5 h-3.5" /> Trivia Quiz</button>
-          <button onClick={() => setShowProps(true)} className="text-[10px] font-black text-amber-400 bg-amber-500/10 border border-amber-500/20 px-3 py-2 rounded-lg uppercase tracking-widest hover:bg-amber-500/20 transition-colors flex items-center gap-1.5"><Coins className="w-3.5 h-3.5" /> Player Props</button>
+        </div>
+        
+        {/* Mobile fallback button */}
+        <div className="lg:hidden flex items-center">
+          <button onClick={() => document.getElementById('fan-poll')?.scrollIntoView({ behavior: 'smooth' })} className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 rounded-lg uppercase tracking-widest flex items-center gap-1.5"><Trophy className="w-3.5 h-3.5" /> Poll</button>
         </div>
       </nav>
 

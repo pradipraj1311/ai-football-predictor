@@ -104,9 +104,9 @@ export default function FanPoll() {
               </div>
 
               {hasVoted && (
-                <div className="flex flex-col items-end">
-                  <span className="text-indigo-400 font-bold">{percentage}%</span>
-                  <span className="text-slate-500 text-[10px]">{team.votes} votes</span>
+                <div className="flex flex-col items-end relative z-10 bg-slate-900/60 px-2 py-1 rounded-md border border-white/5 backdrop-blur-sm shadow-sm">
+                  <span className="text-white font-black drop-shadow-md">{percentage}%</span>
+                  <span className="text-slate-300 font-medium text-[10px] drop-shadow-md">{team.votes} fans</span>
                 </div>
               )}
             </div>
