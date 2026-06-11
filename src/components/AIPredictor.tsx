@@ -19,7 +19,9 @@ export const AIPredictor: React.FC<{ match: Match }> = ({ match }) => {
 
   useEffect(() => {
     // Stop any ongoing speech when match changes
-    window.speechSynthesis.cancel();
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
     setIsSpeaking(false);
     setSelectedPlayerForHeatmap(null);
 
@@ -42,7 +44,9 @@ export const AIPredictor: React.FC<{ match: Match }> = ({ match }) => {
       .finally(() => setLoading(false));
 
     return () => {
-      window.speechSynthesis.cancel();
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
     };
   }, [match.id, match.homeScore, match.awayScore]); 
 
@@ -51,20 +55,26 @@ export const AIPredictor: React.FC<{ match: Match }> = ({ match }) => {
     if (!data || !data.analysis) return;
 
     if (isSpeaking) {
-      window.speechSynthesis.cancel();
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
       setIsSpeaking(false);
     } else {
-      const script = `Live intelligence update for ${match.homeTeam.name} versus ${match.awayTeam.name}. ${data.analysis} The current projected outcome is ${data.suggestedScore}.`;
-      
-      const utterance = new SpeechSynthesisUtterance(script);
-      utterance.rate = 1.1; 
-      utterance.pitch = 1.0;
-      utterance.lang = 'en-US';
+      if ('speechSynthesis' in window) {
+        const script = `Live intelligence update for ${match.homeTeam.name} versus ${match.awayTeam.name}. ${data.analysis} The current projected outcome is ${data.suggestedScore}.`;
+        
+        const utterance = new SpeechSynthesisUtterance(script);
+        utterance.rate = 1.1; 
+        utterance.pitch = 1.0;
+        utterance.lang = 'en-US';
 
-      utterance.onend = () => setIsSpeaking(false);
+        utterance.onend = () => setIsSpeaking(false);
 
-      window.speechSynthesis.speak(utterance);
-      setIsSpeaking(true);
+        window.speechSynthesis.speak(utterance);
+        setIsSpeaking(true);
+      } else {
+        console.warn("Speech synthesis is not supported in this environment.");
+      }
     }
   };
 
