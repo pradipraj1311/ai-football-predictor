@@ -182,6 +182,7 @@ app.get('/api/live-matches', async (_req, res) => {
     });
   }
 });
+
 app.get('/api/poll', async (_req, res) => {
   const corsHeaders = { 'Access-Control-Allow-Origin': '*' };
   try {
@@ -246,7 +247,7 @@ app.post('/api/predict', async (req, res) => {
     let parsedData = null;
     let lastErrorMsg = "";
 
-    // 🔥 Proper rotation logic
+    //Proper rotation logic
     for (let i = 0; i < clients.length; i++) {
       const ai = clients[i];
       console.log(`Trying API Key #${i + 1}`); // This helps identify which key is being used in Vercel Logs
