@@ -235,9 +235,12 @@ function App() {
           </div>
         </div>
         
-        {/* Mobile fallback button */}
-        <div className="lg:hidden flex items-center">
-          <button onClick={() => document.getElementById('fan-poll')?.scrollIntoView({ behavior: 'smooth' })} className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 rounded-lg uppercase tracking-widest flex items-center gap-1.5"><Trophy className="w-3.5 h-3.5" /> Poll</button>
+        {/* Mobile fallback buttons (Icons only to save space) */}
+        <div className="lg:hidden flex items-center gap-1.5">
+          <button onClick={triggerTestGoal} className="text-slate-400 bg-white/5 border border-white/10 p-1.5 rounded-lg hover:bg-white/10 hover:text-white transition-colors" aria-label="Alerts"><BellRing className="w-4 h-4" /></button>
+          <button onClick={() => setShowQuiz(true)} className="text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 p-1.5 rounded-lg hover:bg-indigo-500/20 transition-colors" aria-label="Trivia Quiz"><BrainCircuit className="w-4 h-4" /></button>
+          <button onClick={() => setShowProps(true)} className="text-amber-400 bg-amber-500/10 border border-amber-500/20 p-1.5 rounded-lg hover:bg-amber-500/20 transition-colors" aria-label="Player Props"><Coins className="w-4 h-4" /></button>
+          <button onClick={() => document.getElementById('fan-poll')?.scrollIntoView({ behavior: 'smooth' })} className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1.5 rounded-lg uppercase tracking-widest flex items-center gap-1.5 transition-colors"><Trophy className="w-3.5 h-3.5" /> Poll</button>
         </div>
       </nav>
 
