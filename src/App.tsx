@@ -12,11 +12,11 @@ import { H2HMatrix } from './components/H2HMatrix';
 import { PrivacyPolicy } from './components/PrivacyPolicy';
 import { TermsOfService } from './components/TermsOfService';
 import { GLOBAL_TEAMS_DIRECTORY, WORLD_CUP_STANDINGS, FootballTeamProfile } from './data';
-import { BrainCircuit, Shield, Calendar, History, Globe, Coins, CloudRain, Thermometer, BellRing, Target, ListOrdered, Activity } from 'lucide-react';
+import { BrainCircuit, Shield, Calendar, History, Globe, Coins, CloudRain, Thermometer, BellRing, Target, ListOrdered, Activity, Trophy } from 'lucide-react';
 import { Analytics } from '@vercel/analytics/nuxt/runtime';
 
 function App() {
-  
+
   const [matches, setMatches] = useState<Match[]>([]);
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   const [standings, setStandings] = useState(WORLD_CUP_STANDINGS);
@@ -225,6 +225,7 @@ function App() {
         </a>
         <div className="flex items-center gap-3">
           <button onClick={triggerTestGoal} className="text-[10px] text-slate-600 hover:text-emerald-400 font-bold uppercase px-2"><BellRing className="w-4 h-4" /></button>
+          <button onClick={() => document.getElementById('fan-poll')?.scrollIntoView({ behavior: 'smooth' })} className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 rounded-lg uppercase tracking-widest hover:bg-emerald-500/20 transition-colors flex items-center gap-1.5"><Trophy className="w-3.5 h-3.5" /> Fan Poll</button>
           <button onClick={() => setShowQuiz(true)} className="text-[10px] font-black text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-3 py-2 rounded-lg uppercase tracking-widest hover:bg-indigo-500/20 transition-colors flex items-center gap-1.5"><BrainCircuit className="w-3.5 h-3.5" /> Trivia Quiz</button>
           <button onClick={() => setShowProps(true)} className="text-[10px] font-black text-amber-400 bg-amber-500/10 border border-amber-500/20 px-3 py-2 rounded-lg uppercase tracking-widest hover:bg-amber-500/20 transition-colors flex items-center gap-1.5"><Coins className="w-3.5 h-3.5" /> Player Props</button>
         </div>
@@ -341,9 +342,6 @@ function App() {
                     <H2HMatrix match={selectedMatch} />
                   </>
                 )}
-
-                {/* Display the new Fan Poll here */}
-                <FanPoll />
               </>
             ) : (
               <div className="text-center mt-20 text-slate-500">
@@ -352,6 +350,11 @@ function App() {
                 <span className="text-xs font-black text-indigo-400 bg-indigo-500/10 px-3 py-1 rounded-full uppercase tracking-widest border border-indigo-500/20 mb-6 inline-block">System Info: {userLocation} ({sportName})</span>
               </div>
             )}
+
+            {/* Global Fan Poll Section with ID for smooth scrolling */}
+            <div id="fan-poll" className="mt-8 scroll-mt-24">
+              <FanPoll />
+            </div>
           </div>
         </main>
       )}
