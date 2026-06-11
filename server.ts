@@ -182,6 +182,31 @@ app.get('/api/live-matches', async (_req, res) => {
     });
   }
 });
+app.get('/api/poll', async (_req, res) => {
+  const corsHeaders = { 'Access-Control-Allow-Origin': '*' };
+  try {
+    const client = await pool.connect();
+    const result = await client.query('SELECT * FROM fan_poll ORDER BY votes DESC');
+    client.release();
+    res.status(200).set(corsHeaders).json(result.rows);
+  } catch (error) {
+    res.status(500).set(corsHeaders).json({ error: 'Failed to fetch poll data' });
+  }
+});
+
+app.post('/api/poll/vote', async (req, res) => {
+  const corsHeaders = { 'Access-Control-Allow-Origin': '*' };
+  try {
+    const { team_id } = req.body;
+    const client = await pool.connect();
+    await client.query('UPDATE fan_poll SET votes = votes + 1 WHERE team_id = $1', [team_id]);
+    const updated = await client.query('SELECT * FROM fan_poll ORDER BY votes DESC');
+    client.release();
+    res.status(200).set(corsHeaders).json(updated.rows);
+  } catch (error) {
+    res.status(500).set(corsHeaders).json({ error: 'Failed to submit vote' });
+  }
+});
 
 let predictionCache: { [matchId: string]: { data: any; timestamp: number; scoreHash: string } } = {};
 const PREDICT_CACHE_DURATION = 3 * 60 * 1000;
