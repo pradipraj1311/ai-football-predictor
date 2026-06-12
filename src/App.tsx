@@ -25,6 +25,7 @@ function App() {
   const [timeLeft, setTimeLeft] = useState({ d: 0, h: 0, m: 0, s: 0 });
   const [showProps, setShowProps] = useState(false);
   const [showQuiz, setShowQuiz] = useState(false);
+  const [debugLog, setDebugLog] = useState<any>(null);
 
   const [userLocation, setUserLocation] = useState('Global');
   const [sportName, setSportName] = useState('Football');
@@ -106,6 +107,19 @@ function App() {
           m.awayScore !== undefined &&
           (m.competition.toLowerCase().includes('world cup') || m.competition === 'FIFA World Cup 2026')
         );
+
+        // --- 🚨 ADD THIS DEBUG LOGGER HERE 🚨 ---
+        setDebugLog({
+            totalCombined: combinedMatches.length,
+            validForTable: validMatchesToCalculate.map((m: any) => ({
+                id: m.id,
+                status: m.status,
+                match: `${m.homeTeam?.name || 'Unknown'} vs ${m.awayTeam?.name || 'Unknown'}`,
+                score: `${m.homeScore} - ${m.awayScore}`,
+                source: m.id.toString().includes('live') ? 'RapidAPI' : 'Database'
+            }))
+        });
+        // ----------------------------------------
 
         validMatchesToCalculate.forEach((m: Match) => {
           const homeScore = m.homeScore || 0;
@@ -399,6 +413,17 @@ function App() {
 
       {showProps && <PlayerProps onClose={() => setShowProps(false)} />}
       {showQuiz && <TriviaQuiz onClose={() => setShowQuiz(false)} />}
+
+      {/* 🚨 TEMPORARY X-RAY DEBUGGER 🚨 */}
+      {debugLog && (
+        <div className="fixed bottom-0 left-0 w-full max-h-64 overflow-y-auto bg-black/90 border-t-4 border-red-500 text-green-400 font-mono text-xs p-4 z-[9999] shadow-2xl">
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="text-red-500 font-black text-lg">X-RAY DATA INSPECTOR</h3>
+            <button onClick={() => setDebugLog(null)} className="text-white bg-red-600 px-3 py-1 rounded">CLOSE</button>
+          </div>
+          <pre>{JSON.stringify(debugLog, null, 2)}</pre>
+        </div>
+      )}
     </div>
   );
 }
