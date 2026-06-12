@@ -1,0 +1,10 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "app.vercel.e2match.twa",
+    "sha256_cert_fingerprints": [
+      "F3:99:F1:E3:BD:85:A3:25:97:17:20:2B:8F:57:DF:2D:35:F5:75:E9:7A:D8:8D:D9:44:9E:0F:02:7C:77:AE:FD"
+    ]
+  }
+}]
