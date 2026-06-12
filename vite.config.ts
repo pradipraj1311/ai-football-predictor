@@ -2,7 +2,6 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
-import Sitemap from 'vite-plugin-sitemap';
 
 export default defineConfig({
   plugins: [
@@ -30,14 +29,6 @@ export default defineConfig({
       workbox: {
         navigateFallbackDenylist: [/^\/sitemap\.xml$/, /^\/robots\.txt$/]
       }
-    }),
-    Sitemap({
-      hostname: 'https://e2match.vercel.app',
-      dynamicRoutes: [
-        '/privacy-policy',
-        '/terms-of-service'
-      ],
-      generateRobotsTxt: true
     })
   ],
   build: {
