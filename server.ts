@@ -49,10 +49,20 @@ app.get('/api/db-matches', async (_req, res) => {
       matchDate.setHours(0, 0, 0, 0);
 
       let status = 'UPCOMING';
-      if (matchDate.getTime() === today.getTime()) {
-        status = 'LIVE';
-      } else if (matchDate.getTime() < today.getTime()) {
+      if (matchDate.getTime() < today.getTime()) {
         status = 'FINISHED';
+      } else if (matchDate.getTime() === today.getTime()) {
+        // Calculate actual kick-off time so "today" matches aren't stuck on LIVE all day long
+        const currentTime = new Date();
+        const [hours, minutes] = (row.match_time || "00:00").split(':').map(Number);
+        const kickoff = new Date(today);
+        kickoff.setHours(hours || 0, minutes || 0, 0, 0);
+        
+        if (currentTime.getTime() >= kickoff.getTime() && currentTime.getTime() < kickoff.getTime() + (120 * 60000)) {
+          status = 'LIVE';
+        } else if (currentTime.getTime() >= kickoff.getTime() + (120 * 60000)) {
+          status = 'FINISHED';
+        }
       }
 
       const homeTeamName = typeof row.home_team === 'string' ? row.home_team : row.home_team?.name || 'Home';
@@ -97,7 +107,8 @@ app.get('/api/live-matches', async (_req, res) => {
     'Content-Type': 'application/json'
   };
 
-  if (matchCache && (Date.now() - matchCache.timestamp < CACHE_DURATION)) {
+  // Disable caching entirely in development mode so you can see your live changes instantly
+  if (process.env.NODE_ENV === 'production' && matchCache && (Date.now() - matchCache.timestamp < CACHE_DURATION)) {
     return res.status(200).set(corsHeaders).json({ matches: matchCache.data, cached: true });
   }
 
@@ -146,12 +157,12 @@ app.get('/api/live-matches', async (_req, res) => {
       const minuteStr = event.status?.description || "45";
       const parsedMinute = parseInt(minuteStr.replace(/\D/g, '')) || 45;
 
-      const statusType = event.status?.type?.toLowerCase();
-      let mappedStatus = 'LIVE';
+      const statusType = event.status?.type?.toLowerCase() || '';
+      let mappedStatus = 'UPCOMING'; // Safely default to UPCOMING rather than getting stuck on LIVE
       if (statusType === 'finished' || statusType === 'closed' || statusType === 'ended') {
         mappedStatus = 'FINISHED';
-      } else if (statusType === 'notstarted' || statusType === 'upcoming') {
-        mappedStatus = 'UPCOMING';
+      } else if (statusType === 'inprogress' || statusType === 'live' || event.status?.code === 6) {
+        mappedStatus = 'LIVE';
       } else if (statusType === 'canceled') {
         mappedStatus = 'POSTPONED';
       }

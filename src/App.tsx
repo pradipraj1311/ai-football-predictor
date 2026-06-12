@@ -67,8 +67,8 @@ function App() {
     const fetchAllMatches = async () => {
       try {
         console.log("Fetching matches from DB..."); // Debugging log
-        // 1. Fetch from Database
-        const dbRes = await fetch('/api/db-matches');
+        // 1. Fetch from Database (Added timestamp to bypass aggressive browser caching)
+        const dbRes = await fetch(`/api/db-matches?t=${Date.now()}`);
         if (!dbRes.ok) throw new Error("Failed to fetch DB matches");
         const dbData = await dbRes.json();
         const dbMatches = dbData.matches || [];
@@ -76,7 +76,7 @@ function App() {
 
         // 2. Fetch from Live API
         console.log("Fetching live matches from API..."); // Debugging log
-        const liveRes = await fetch('/api/live-matches');
+        const liveRes = await fetch(`/api/live-matches?t=${Date.now()}`);
         let liveMatches = [];
         if (liveRes.ok) {
           const liveData = await liveRes.json();
@@ -118,7 +118,11 @@ function App() {
 
             newStandings.forEach((group: any) => {
               group.entries.forEach((team: any) => {
-                if (team.code === homeCode) {
+                // Enhanced Points Engine: Catch name variations if RapidAPI code doesn't match perfectly
+                const isHome = team.code === homeCode || team.teamName.toLowerCase().includes(m.homeTeam.name.toLowerCase());
+                const isAway = team.code === awayCode || team.teamName.toLowerCase().includes(m.awayTeam.name.toLowerCase());
+
+                if (isHome) {
                   team.played += 1;
                   team.goalsFor += homeGoals;
                   team.goalsAgainst += awayGoals;
@@ -126,7 +130,7 @@ function App() {
                   else if (homeGoals < awayGoals) { team.lose += 1; }
                   else { team.draw += 1; team.points += 1; }
                 }
-                if (team.code === awayCode) {
+                if (isAway) {
                   team.played += 1;
                   team.goalsFor += awayGoals;
                   team.goalsAgainst += homeGoals;
