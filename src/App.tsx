@@ -21,7 +21,7 @@ function App() {
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   const [standings, setStandings] = useState(WORLD_CUP_STANDINGS);
   const [selectedTeam, setSelectedTeam] = useState<FootballTeamProfile | null>(null);
-  const [activeTab, setActiveTab] = useState<'live' | 'upcoming' | 'results' | 'teams' | 'standings'>('upcoming');
+  const [activeTab, setActiveTab] = useState<'LIVE' | 'UPCOMING' | 'FINISHED' | 'TEAMS' | 'STANDINGS'>('LIVE');
   const [timeLeft, setTimeLeft] = useState({ d: 0, h: 0, m: 0, s: 0 });
   const [showProps, setShowProps] = useState(false);
   const [showQuiz, setShowQuiz] = useState(false);
@@ -100,55 +100,62 @@ function App() {
         // 1. Create a deep copy of the base standings to reset stats
         let newStandings = JSON.parse(JSON.stringify(WORLD_CUP_STANDINGS));
 
-        // 2. Process all finished or live matches to calculate stats
+        // Re-initialize to numbers just in case the JSON copy retains unexpected strings
+        newStandings.forEach((group: any) => {
+          group.entries.forEach((team: any) => {
+            team.played = 0; team.win = 0; team.draw = 0; team.lose = 0;
+            team.goalsFor = 0; team.goalsAgainst = 0; team.points = 0; team.gd = 0;
+          });
+        });
+
+        // 2. Process all finished or live matches to calculate stats safely
         combinedMatches.forEach((m: Match) => {
-          if ((m.status === 'FT' || m.status === 'LIVE') && m.homeScore !== undefined && m.awayScore !== undefined) {
+          if ((m.status === 'FINISHED' || m.status === 'LIVE') && m.homeScore !== undefined && m.awayScore !== undefined) {
             const homeCode = typeof m.homeTeam === 'object' ? m.homeTeam.code : m.homeTeam;
             const awayCode = typeof m.awayTeam === 'object' ? m.awayTeam.code : m.awayTeam;
             const homeGoals = m.homeScore;
             const awayGoals = m.awayScore;
 
-            let matchFoundInStandings = false; // Flag to track if the match is relevant to our standings
-
             newStandings.forEach((group: any) => {
-              // This logic is a bit complex, but it correctly updates each team's stats individually.
               group.entries.forEach((team: any) => {
-                // Only calculate points if the team from the match exists in our World Cup standings
-                if (team.code === homeCode || team.code === awayCode) {
-                  matchFoundInStandings = true;
-
+                if (team.code === homeCode) {
                   team.played += 1;
-                  const isHome = team.code === homeCode;
-                  const goalsFor = isHome ? homeGoals : awayGoals;
-                  const goalsAgainst = isHome ? awayGoals : homeGoals;
-
-                  team.gd = parseInt(team.gd) + (goalsFor - goalsAgainst);
-
-                  if (goalsFor > goalsAgainst) {
-                    team.win += 1;
-                    team.points += 3;
-                  } else if (goalsFor < goalsAgainst) {
-                    team.lose += 1;
-                  } else {
-                    team.draw += 1;
-                    team.points += 1;
-                  }
+                  team.goalsFor += homeGoals;
+                  team.goalsAgainst += awayGoals;
+                  if (homeGoals > awayGoals) { team.win += 1; team.points += 3; }
+                  else if (homeGoals < awayGoals) { team.lose += 1; }
+                  else { team.draw += 1; team.points += 1; }
                 }
-              });
-
-              // Sort the group by points, then by goal difference
-              group.entries.sort((a: any, b: any) => {
-                if (b.points !== a.points) return b.points - a.points;
-                return parseInt(b.gd) - parseInt(a.gd);
-              });
-
-              // Assign new ranks
-              group.entries.forEach((team: any, idx: number) => {
-                team.rank = idx + 1;
-                team.gd = parseInt(team.gd) > 0 ? `+${parseInt(team.gd)}` : `${parseInt(team.gd)}`;
+                if (team.code === awayCode) {
+                  team.played += 1;
+                  team.goalsFor += awayGoals;
+                  team.goalsAgainst += homeGoals;
+                  if (awayGoals > homeGoals) { team.win += 1; team.points += 3; }
+                  else if (awayGoals < homeGoals) { team.lose += 1; }
+                  else { team.draw += 1; team.points += 1; }
+                }
               });
             });
           }
+        });
+
+        // 3. Calculate GD, Sort by points then GD, and assign ranks
+        newStandings.forEach((group: any) => {
+          group.entries.forEach((team: any) => {
+            const gdNum = team.goalsFor - team.goalsAgainst;
+            team.gd = gdNum > 0 ? `+${gdNum}` : `${gdNum}`;
+          });
+
+          group.entries.sort((a: any, b: any) => {
+            if (b.points !== a.points) return b.points - a.points;
+            const bGd = b.goalsFor - b.goalsAgainst;
+            const aGd = a.goalsFor - a.goalsAgainst;
+            return bGd - aGd;
+          });
+
+          group.entries.forEach((team: any, idx: number) => {
+            team.rank = idx + 1;
+          });
         });
 
         setStandings(newStandings);
@@ -199,9 +206,9 @@ function App() {
   };
 
   const filteredMatches = matches.filter((m) => {
-    if (activeTab === 'live') return m.status === 'LIVE';
-    if (activeTab === 'upcoming') return m.status === 'UPCOMING';
-    if (activeTab === 'results') return m.status === 'FT';
+    if (activeTab === 'LIVE') return m.status === 'LIVE';
+    if (activeTab === 'UPCOMING') return m.status === 'UPCOMING';
+    if (activeTab === 'FINISHED') return m.status === 'FINISHED';
     return false;
   });
 
@@ -224,7 +231,7 @@ function App() {
               <p className="text-[10px] text-slate-400 font-mono uppercase tracking-widest mt-1">Live Intelligence</p>
             </div>
           </a>
-          
+
           {/* Premium Navbar Buttons - Top Left */}
           <div className="hidden lg:flex items-center gap-1.5 bg-slate-900/60 p-1.5 rounded-xl border border-white/10 shadow-[inset_0_0_15px_rgba(0,0,0,0.5)]">
             <button onClick={triggerTestGoal} className="text-[10px] font-black text-slate-400 hover:text-white hover:bg-white/5 px-3 py-2 rounded-lg uppercase tracking-widest transition-all flex items-center gap-1.5"><BellRing className="w-3.5 h-3.5" /> Alerts</button>
@@ -234,7 +241,7 @@ function App() {
             <button onClick={() => setShowProps(true)} className="text-[10px] font-black text-amber-400 bg-amber-500/10 border border-amber-500/20 px-3 py-2 rounded-lg uppercase tracking-widest hover:bg-amber-500/20 hover:shadow-[0_0_15px_rgba(245,158,11,0.2)] transition-all flex items-center gap-1.5"><Coins className="w-3.5 h-3.5" /> Player Props</button>
           </div>
         </div>
-        
+
         {/* Mobile fallback buttons (Icons only to save space) */}
         <div className="lg:hidden flex items-center gap-1.5">
           <button onClick={triggerTestGoal} className="text-slate-400 bg-white/5 border border-white/10 p-1.5 rounded-lg hover:bg-white/10 hover:text-white transition-colors" aria-label="Alerts"><BellRing className="w-4 h-4" /></button>
@@ -243,7 +250,6 @@ function App() {
           <button onClick={() => document.getElementById('fan-poll')?.scrollIntoView({ behavior: 'smooth' })} className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1.5 rounded-lg uppercase tracking-widest flex items-center gap-1.5 transition-colors"><Trophy className="w-3.5 h-3.5" /> Poll</button>
         </div>
       </nav>
-
       {path === '/privacy-policy' ? (
         <PrivacyPolicy />
       ) : path === '/terms-of-service' ? (
@@ -252,21 +258,21 @@ function App() {
         <main className="max-w-[1600px] mx-auto p-4 md:p-6 pb-24 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start relative min-h-screen">
           <div className="lg:col-span-4 xl:col-span-3 flex flex-col gap-4 sticky top-24">
             <div className="bg-[#0B1121] border border-white/5 p-1.5 rounded-xl grid grid-cols-5 gap-1 text-center">
-              <button onClick={() => { setActiveTab('live'); setSelectedTeam(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'live' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}><span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span> Live</button>
-              <button onClick={() => { setActiveTab('upcoming'); setSelectedTeam(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'upcoming' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><Calendar className="w-3 h-3" /> Upcoming</button>
-              <button onClick={() => { setActiveTab('results'); setSelectedTeam(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'results' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><History className="w-3 h-3" /> Results</button>
-              <button onClick={() => { setActiveTab('standings'); setSelectedTeam(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'standings' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><ListOrdered className="w-3 h-3" /> Table</button>
-              <button onClick={() => { setActiveTab('teams'); setSelectedTeam(GLOBAL_TEAMS_DIRECTORY[0]); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'teams' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><Shield className="w-3 h-3" /> Teams</button>
+              <button onClick={() => { setActiveTab('LIVE'); setSelectedTeam(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'LIVE' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}><span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span> Live</button>
+              <button onClick={() => { setActiveTab('UPCOMING'); setSelectedTeam(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'UPCOMING' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><Calendar className="w-3 h-3" /> Upcoming</button>
+              <button onClick={() => { setActiveTab('FINISHED'); setSelectedTeam(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'FINISHED' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><History className="w-3 h-3" /> Results</button>
+              <button onClick={() => { setActiveTab('STANDINGS'); setSelectedTeam(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'STANDINGS' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><ListOrdered className="w-3 h-3" /> Table</button>
+              <button onClick={() => { setActiveTab('TEAMS'); setSelectedTeam(GLOBAL_TEAMS_DIRECTORY[0]); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'TEAMS' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><Shield className="w-3 h-3" /> Teams</button>
             </div>
 
             <div className="flex flex-col gap-2 max-h-[600px] overflow-y-auto pr-1">
-              {activeTab === 'standings' ? (
+              {activeTab === 'STANDINGS' ? (
                 <div className="bg-indigo-600/10 border border-indigo-500/20 rounded-xl p-6 text-center shadow-inner flex flex-col items-center justify-center min-h-[300px]">
                   <Globe className="w-12 h-12 text-indigo-400 mb-4 animate-[spin_10s_linear_infinite]" />
                   <h4 className="text-sm font-black text-white uppercase tracking-widest mb-2">Global Group Stage</h4>
                   <p className="text-xs text-slate-400 leading-relaxed">The top two teams from each group, along with the eight best third-placed teams, will advance to the Round of 32.</p>
                 </div>
-              ) : activeTab !== 'teams' ? (
+              ) : activeTab !== 'TEAMS' ? (
                 filteredMatches.length === 0 ? (
                   <div className="text-xs text-slate-500 text-center p-8 bg-[#0B1121] rounded-xl border border-white/5 flex flex-col items-center gap-2">
                     <span className="text-2xl">⚽</span><span className="font-bold">No Matches Right Now.</span>
@@ -293,9 +299,9 @@ function App() {
           </div>
 
           <div className="lg:col-span-8 xl:col-span-9 flex flex-col gap-6">
-            {activeTab === 'standings' ? (
+            {activeTab === 'STANDINGS' ? (
               <StandingsGrid standings={standings} />
-            ) : activeTab === 'teams' && selectedTeam ? (
+            ) : activeTab === 'TEAMS' && selectedTeam ? (
               <div className="flex flex-col gap-6">
                 <div className="bg-[#0B1121] border border-white/5 rounded-2xl p-6 relative overflow-hidden shadow-2xl">
                   <div className="absolute top-0 right-0 -mt-16 -mr-16 w-64 h-64 bg-indigo-500/5 rounded-full blur-3xl"></div>
@@ -331,7 +337,7 @@ function App() {
                       <span className="text-lg font-black text-white">{selectedMatch.homeTeam?.name}</span>
                     </div>
                     <div className="flex flex-col items-center justify-center w-1/3">
-                      {selectedMatch.status === 'LIVE' || selectedMatch.status === 'FT' ? (
+                      {selectedMatch.status === 'LIVE' || selectedMatch.status === 'FINISHED' ? (
                         <div className="flex items-center gap-4 text-5xl font-black text-white font-mono">
                           <span>{selectedMatch.homeScore}</span><span className="text-slate-600 pb-2">-</span><span>{selectedMatch.awayScore}</span>
                         </div>
@@ -349,7 +355,7 @@ function App() {
                   </div>
                 </div>
                 <AIPredictor match={selectedMatch} />
-                {(selectedMatch.status === 'LIVE' || selectedMatch.status === 'FT') && (
+                {(selectedMatch.status === 'LIVE' || selectedMatch.status === 'FINISHED') && (
                   <>
                     <LiveTelemetry match={selectedMatch} />
                     <H2HMatrix match={selectedMatch} />

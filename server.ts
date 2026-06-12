@@ -52,7 +52,7 @@ app.get('/api/db-matches', async (_req, res) => {
       if (matchDate.getTime() === today.getTime()) {
         status = 'LIVE';
       } else if (matchDate.getTime() < today.getTime()) {
-        status = 'FT';
+        status = 'FINISHED';
       }
 
       const homeTeamName = typeof row.home_team === 'string' ? row.home_team : row.home_team?.name || 'Home';
@@ -63,7 +63,7 @@ app.get('/api/db-matches', async (_req, res) => {
         competition: row.competition || 'FIFA World Cup 2026',
         status,
         minute: status === 'LIVE' ? 45 : undefined,
-        time: status === 'FT' ? 'FT' : (status === 'LIVE' ? 'LIVE' : row.match_time),
+        time: status === 'FINISHED' ? 'FT' : (status === 'LIVE' ? 'LIVE' : row.match_time),
         date: matchDate.toISOString().split('T')[0],
         homeTeam: {
           id: row.home_team_id || homeTeamName.toLowerCase().replace(/\s/g, '-'),
@@ -146,12 +146,22 @@ app.get('/api/live-matches', async (_req, res) => {
       const minuteStr = event.status?.description || "45";
       const parsedMinute = parseInt(minuteStr.replace(/\D/g, '')) || 45;
 
+      const statusType = event.status?.type?.toLowerCase();
+      let mappedStatus = 'LIVE';
+      if (statusType === 'finished' || statusType === 'closed' || statusType === 'ended') {
+        mappedStatus = 'FINISHED';
+      } else if (statusType === 'notstarted' || statusType === 'upcoming') {
+        mappedStatus = 'UPCOMING';
+      } else if (statusType === 'canceled') {
+        mappedStatus = 'POSTPONED';
+      }
+
       return {
         id: String(event.id),
         competition: event.tournament?.name || 'Global Football',
-        status: 'LIVE',
-        minute: parsedMinute,
-        time: 'LIVE',
+        status: mappedStatus,
+        minute: mappedStatus === 'LIVE' ? parsedMinute : undefined,
+        time: mappedStatus === 'FINISHED' ? 'FT' : (mappedStatus === 'LIVE' ? 'LIVE' : 'TBD'),
         date: new Date().toISOString().split('T')[0],
         homeScore: event.homeScore?.current ?? event.homeScore?.display ?? 0,
         awayScore: event.awayScore?.current ?? event.awayScore?.display ?? 0,

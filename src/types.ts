@@ -27,7 +27,7 @@ export interface Match {
   id: string;
   homeTeam: Team;
   awayTeam: Team;
-  status: 'LIVE' | 'POSTPONED' | 'FT' | 'UPCOMING';
+  status: 'LIVE' | 'POSTPONED' | 'FINISHED' | 'UPCOMING';
   minute?: number;
   time: string;
   date: string;
