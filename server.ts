@@ -158,10 +158,12 @@ app.get('/api/live-matches', async (_req, res) => {
       const parsedMinute = parseInt(minuteStr.replace(/\D/g, '')) || 45;
 
       const statusType = event.status?.type?.toLowerCase() || '';
-      let mappedStatus = 'UPCOMING'; // Safely default to UPCOMING rather than getting stuck on LIVE
-      if (statusType === 'finished' || statusType === 'closed' || statusType === 'ended') {
+      
+      // EXTREME AGGRESSIVE STATUS MAPPING
+      let mappedStatus = 'UPCOMING'; 
+      if (['finished', 'closed', 'ended', 'ft', 'aet', 'pen'].includes(statusType)) {
         mappedStatus = 'FINISHED';
-      } else if (statusType === 'inprogress' || statusType === 'live' || event.status?.code === 6) {
+      } else if (['inprogress', 'live', '1st half', '2nd half', 'halftime'].includes(statusType) || event.status?.code === 6) {
         mappedStatus = 'LIVE';
       } else if (statusType === 'canceled') {
         mappedStatus = 'POSTPONED';

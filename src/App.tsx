@@ -97,68 +97,61 @@ function App() {
         setMatches(combinedMatches);
 
         // --- NEW: DYNAMIC STANDINGS ENGINE ---
-        // 1. Create a deep copy of the base standings to reset stats
         let newStandings = JSON.parse(JSON.stringify(WORLD_CUP_STANDINGS));
 
-        // Re-initialize to numbers just in case the JSON copy retains unexpected strings
-        newStandings.forEach((group: any) => {
-          group.entries.forEach((team: any) => {
-            team.played = 0; team.win = 0; team.draw = 0; team.lose = 0;
-            team.goalsFor = 0; team.goalsAgainst = 0; team.points = 0; team.gd = 0;
-          });
-        });
+        // Safely extract all matches that actually have scores to calculate
+        const validMatchesToCalculate = combinedMatches.filter((m: Match) =>
+          (m.status === 'FINISHED' || m.status === 'LIVE') &&
+          m.homeScore !== undefined &&
+          m.awayScore !== undefined &&
+          (m.competition.toLowerCase().includes('world cup') || m.competition === 'FIFA World Cup 2026')
+        );
 
-        // 2. Process all finished or live matches to calculate stats safely
-        combinedMatches.forEach((m: Match) => {
-          if ((m.status === 'FINISHED' || m.status === 'LIVE') && m.homeScore !== undefined && m.awayScore !== undefined) {
-            const homeCode = typeof m.homeTeam === 'object' ? m.homeTeam.code : m.homeTeam;
-            const awayCode = typeof m.awayTeam === 'object' ? m.awayTeam.code : m.awayTeam;
-            const homeGoals = m.homeScore;
-            const awayGoals = m.awayScore;
+        validMatchesToCalculate.forEach((m: Match) => {
+          const homeScore = m.homeScore || 0;
+          const awayScore = m.awayScore || 0;
+          const homeName = typeof m.homeTeam === 'object' ? m.homeTeam.name.toLowerCase() : m.homeTeam.toLowerCase();
+          const awayName = typeof m.awayTeam === 'object' ? m.awayTeam.name.toLowerCase() : m.awayTeam.toLowerCase();
 
-            newStandings.forEach((group: any) => {
-              group.entries.forEach((team: any) => {
-                // Enhanced Points Engine: Catch name variations if RapidAPI code doesn't match perfectly
-                const isHome = team.code === homeCode || team.teamName.toLowerCase().includes(m.homeTeam.name.toLowerCase());
-                const isAway = team.code === awayCode || team.teamName.toLowerCase().includes(m.awayTeam.name.toLowerCase());
+          newStandings.forEach((group: any) => {
+            group.entries.forEach((team: any) => {
+              // Safe name matching (bypasses 3-letter code mismatches)
+              const isHome = team.teamName.toLowerCase().includes(homeName) || homeName.includes(team.teamName.toLowerCase());
+              const isAway = team.teamName.toLowerCase().includes(awayName) || awayName.includes(team.teamName.toLowerCase());
 
+              if (isHome || isAway) {
+                team.played += 1;
                 if (isHome) {
-                  team.played += 1;
-                  team.goalsFor += homeGoals;
-                  team.goalsAgainst += awayGoals;
-                  if (homeGoals > awayGoals) { team.win += 1; team.points += 3; }
-                  else if (homeGoals < awayGoals) { team.lose += 1; }
+                  team.goalsFor += homeScore;
+                  team.goalsAgainst += awayScore;
+                  if (homeScore > awayScore) { team.win += 1; team.points += 3; }
+                  else if (homeScore < awayScore) { team.lose += 1; }
                   else { team.draw += 1; team.points += 1; }
                 }
                 if (isAway) {
-                  team.played += 1;
-                  team.goalsFor += awayGoals;
-                  team.goalsAgainst += homeGoals;
-                  if (awayGoals > homeGoals) { team.win += 1; team.points += 3; }
-                  else if (awayGoals < homeGoals) { team.lose += 1; }
+                  team.goalsFor += awayScore;
+                  team.goalsAgainst += homeScore;
+                  if (awayScore > homeScore) { team.win += 1; team.points += 3; }
+                  else if (awayScore < homeScore) { team.lose += 1; }
                   else { team.draw += 1; team.points += 1; }
                 }
-              });
+                // Update GD inside the loop
+                team.gd = team.goalsFor - team.goalsAgainst;
+              }
             });
-          }
+          });
         });
 
-        // 3. Calculate GD, Sort by points then GD, and assign ranks
+        // 3. Sort and Rank the Groups
         newStandings.forEach((group: any) => {
-          group.entries.forEach((team: any) => {
-            const gdNum = team.goalsFor - team.goalsAgainst;
-            team.gd = gdNum > 0 ? `+${gdNum}` : `${gdNum}`;
-          });
-
           group.entries.sort((a: any, b: any) => {
             if (b.points !== a.points) return b.points - a.points;
-            const bGd = b.goalsFor - b.goalsAgainst;
-            const aGd = a.goalsFor - a.goalsAgainst;
-            return bGd - aGd;
+            return b.gd - a.gd; // Sort by Goal Difference if points are tied
           });
 
           group.entries.forEach((team: any, idx: number) => {
             team.rank = idx + 1;
+            team.gd = team.gd > 0 ? `+${team.gd}` : `${team.gd}`; // Format GD for UI
           });
         });
 
@@ -209,6 +202,7 @@ function App() {
     setTimeout(() => setAlerts(prev => prev.filter(a => a.id !== testAlert.id)), 6000);
   };
 
+  // SOFASCORE STYLE TAB FILTERING
   const filteredMatches = matches.filter((m) => {
     if (activeTab === 'LIVE') return m.status === 'LIVE';
     if (activeTab === 'UPCOMING') return m.status === 'UPCOMING';
