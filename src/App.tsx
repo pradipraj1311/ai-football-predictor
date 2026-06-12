@@ -71,8 +71,31 @@ function App() {
         const dbRes = await fetch(`/api/db-matches?t=${Date.now()}`);
         if (!dbRes.ok) throw new Error("Failed to fetch DB matches");
         const dbData = await dbRes.json();
-        const dbMatches = dbData.matches || [];
-        console.log("DB Matches loaded:", dbMatches.length); // Debugging log
+        
+        // Determine status on the frontend based on local time
+        const dbMatches = (dbData.matches || []).map((m: any) => {
+          if (m.dbStatus === 'FINISHED') return { ...m, status: 'FINISHED', time: 'FT' };
+
+          // Create kickoff time in user's local timezone (assuming DB time is in UTC)
+          // If your DB time is in IST, you need to adjust it accordingly.
+          const matchDateObj = new Date(`${m.date}T${m.time}:00Z`); 
+          const now = new Date(); // User's current local time
+
+          let calculatedStatus = 'UPCOMING';
+          
+          // If the match has started and it's been less than 2 hours (120 minutes), it's LIVE
+          if (now.getTime() >= matchDateObj.getTime() && now.getTime() < matchDateObj.getTime() + (120 * 60000)) {
+            calculatedStatus = 'LIVE';
+          } 
+          // If it's been more than 2 hours and DB doesn't have FT yet, assume it's FINISHED
+          else if (now.getTime() >= matchDateObj.getTime() + (120 * 60000)) {
+            calculatedStatus = 'FINISHED';
+            m.time = 'FT'; // For UI display
+          }
+
+          return { ...m, status: calculatedStatus };
+        });
+        console.log("DB Matches loaded with local timezone status:", dbMatches.length);
 
         // 2. Fetch from Live API
         console.log("Fetching live matches from API..."); // Debugging log

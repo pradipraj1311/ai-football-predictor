@@ -41,40 +41,16 @@ app.get('/api/db-matches', async (_req, res) => {
     );
     client.release();
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
     const dynamicMatches = result.rows.map(row => {
-      const matchDate = new Date(row.match_date);
-      matchDate.setHours(0, 0, 0, 0);
-
-      let status = 'UPCOMING';
-      if (matchDate.getTime() < today.getTime()) {
-        status = 'FINISHED';
-      } else if (matchDate.getTime() === today.getTime()) {
-        // Calculate actual kick-off time so "today" matches aren't stuck on LIVE all day long
-        const currentTime = new Date();
-        const [hours, minutes] = (row.match_time || "00:00").split(':').map(Number);
-        const kickoff = new Date(today);
-        kickoff.setHours(hours || 0, minutes || 0, 0, 0);
-        
-        if (currentTime.getTime() >= kickoff.getTime() && currentTime.getTime() < kickoff.getTime() + (120 * 60000)) {
-          status = 'LIVE';
-        } else if (currentTime.getTime() >= kickoff.getTime() + (120 * 60000)) {
-          status = 'FINISHED';
-        }
-      }
-
       const homeTeamName = typeof row.home_team === 'string' ? row.home_team : row.home_team?.name || 'Home';
       const awayTeamName = typeof row.away_team === 'string' ? row.away_team : row.away_team?.name || 'Away';
 
       return {
         id: row.id,
         competition: row.competition || 'FIFA World Cup 2026',
-        status,
-        minute: status === 'LIVE' ? 45 : undefined,
-        time: status === 'FINISHED' ? 'FT' : (status === 'LIVE' ? 'LIVE' : row.match_time),
-        date: matchDate.toISOString().split('T')[0],
+        dbStatus: row.match_time === 'FT' ? 'FINISHED' : 'SCHEDULED', // Send what the database says
+        time: row.match_time, 
+        date: new Date(row.match_date).toISOString().split('T')[0],
         homeTeam: {
           id: row.home_team_id || homeTeamName.toLowerCase().replace(/\s/g, '-'),
           name: homeTeamName,
