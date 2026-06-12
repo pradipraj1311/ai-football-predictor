@@ -7,7 +7,7 @@
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/server.ts" },
     { "source": "/.well-known/(.*)", "destination": "/.well-known/$1" },
-    { "source": "/sitemap.xml", "destination": "/sitemap.xml" },
+    { "source": "/sitemap-index.xml", "destination": "/sitemap-index.xml" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
