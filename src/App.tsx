@@ -25,11 +25,13 @@ function App() {
   const [timeLeft, setTimeLeft] = useState({ d: 0, h: 0, m: 0, s: 0 });
   const [showProps, setShowProps] = useState(false);
   const [showQuiz, setShowQuiz] = useState(false);
+  const [resultFilter, setResultFilter] = useState('');
 
   const [userLocation, setUserLocation] = useState('Global');
   const [sportName, setSportName] = useState('Football');
   const [alerts, setAlerts] = useState<any[]>([]);
   const previousMatchesRef = useRef<Match[]>([]);
+  const finishedMatchesRef = useRef<Match[]>([]);
 
   useEffect(() => {
     try {
@@ -127,12 +129,26 @@ function App() {
         }
         console.log("Live Matches loaded:", liveMatches.length); // Debugging log
 
-        // 3. Combine them intelligently
-        // Remove any DB match that is currently LIVE according to the external API to avoid duplicates
-        const liveIds = liveMatches.map((m: Match) => m.id);
-        const nonLiveDbMatches = dbMatches.filter((m: Match) => !liveIds.includes(m.id));
+        // --- NEW: Preserve finished matches from live API ---
+        liveMatches.forEach((m: Match) => {
+          if (m.status === 'FINISHED') {
+            const existingIdx = finishedMatchesRef.current.findIndex(fm => fm.id === m.id);
+            if (existingIdx >= 0) {
+              finishedMatchesRef.current[existingIdx] = m;
+            } else {
+              finishedMatchesRef.current.push(m);
+            }
+          }
+        });
 
-        const combinedMatches = [...liveMatches, ...nonLiveDbMatches];
+        // 3. Combine them intelligently
+        const liveIds = liveMatches.map((m: Match) => m.id);
+        const finishedLiveIds = finishedMatchesRef.current.map((m: Match) => m.id);
+
+        const nonLiveDbMatches = dbMatches.filter((m: Match) => !liveIds.includes(m.id) && !finishedLiveIds.includes(m.id));
+        const persistentFinishedMatches = finishedMatchesRef.current.filter((m: Match) => !liveIds.includes(m.id));
+
+        const combinedMatches = [...liveMatches, ...persistentFinishedMatches, ...nonLiveDbMatches];
 
         console.log("Total Combined Matches:", combinedMatches.length); // Debugging log
 
@@ -252,7 +268,16 @@ function App() {
   const filteredMatches = matches.filter((m) => {
     if (activeTab === 'LIVE') return m.status === 'LIVE';
     if (activeTab === 'UPCOMING') return m.status === 'UPCOMING';
-    if (activeTab === 'FINISHED') return m.status === 'FINISHED';
+    if (activeTab === 'FINISHED') {
+      if (m.status !== 'FINISHED') return false;
+      if (resultFilter) {
+        const search = resultFilter.toLowerCase();
+        return m.homeTeam.name.toLowerCase().includes(search) || 
+               m.awayTeam.name.toLowerCase().includes(search) || 
+               m.competition.toLowerCase().includes(search);
+      }
+      return true;
+    }
     return false;
   });
 
@@ -310,6 +335,46 @@ function App() {
             </div>
 
             <div className="flex flex-col gap-2 max-h-[600px] overflow-y-auto pr-1">
+              {activeTab === 'FINISHED' && (
+                <div className="mb-2 shrink-0 animate-fade-in-up">
+                <div className="mb-4 shrink-0 animate-fade-in-up flex flex-col gap-3">
+                  <input
+                    type="text"
+                    placeholder="Search results by team or competition..."
+                    value={resultFilter}
+                    onChange={(e) => setResultFilter(e.target.value)}
+                    className="w-full bg-[#0B1121] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500/50 transition-colors shadow-inner"
+                  />
+
+                  {/* --- NEW: Smart Filter Quick Action Pills --- */}
+                  <div className="flex items-center gap-2 overflow-x-auto pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                    <button
+                      onClick={() => setResultFilter('')}
+                      className={`shrink-0 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border ${!resultFilter ? 'bg-indigo-600 text-white border-indigo-500 shadow-[0_0_15px_rgba(79,70,229,0.3)]' : 'bg-[#0B1121] text-slate-400 border-white/5 hover:bg-white/5'}`}
+                    >
+                      All Results
+                    </button>
+                    {Array.from(
+                      new Map(
+                        matches
+                          .filter((m) => m.status === 'FINISHED')
+                          .flatMap((m) => [
+                            [m.homeTeam.name, m.homeTeam],
+                            [m.awayTeam.name, m.awayTeam],
+                          ])
+                      ).values()
+                    ).map((team) => (
+                      <button
+                        key={team.name}
+                        onClick={() => setResultFilter(team.name)}
+                        className={`shrink-0 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border flex items-center gap-1.5 ${resultFilter.toLowerCase() === team.name.toLowerCase() ? 'bg-indigo-600 text-white border-indigo-500 shadow-[0_0_15px_rgba(79,70,229,0.3)]' : 'bg-[#0B1121] text-slate-400 border-white/5 hover:bg-white/5'}`}
+                      >
+                        <span className="text-sm">{team.logo}</span> {team.code}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               {activeTab === 'STANDINGS' ? (
                 <div className="bg-indigo-600/10 border border-indigo-500/20 rounded-xl p-6 text-center shadow-inner flex flex-col items-center justify-center min-h-[300px]">
                   <Globe className="w-12 h-12 text-indigo-400 mb-4 animate-[spin_10s_linear_infinite]" />
