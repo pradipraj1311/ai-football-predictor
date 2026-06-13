@@ -88,22 +88,11 @@ app.get('/api/live-matches', async (_req, res) => {
     return res.status(200).set(corsHeaders).json({ matches: matchCache.data, cached: true });
   }
 
-  const minorLeagueFallback = [
-    {
-      id: 'live-minor-1',
-      competition: 'LaLiga 2, Promotion Playoffs',
-      status: 'LIVE',
-      minute: 82,
-      time: 'LIVE',
-      date: new Date().toISOString().split('T')[0],
-      homeScore: 1,
-      awayScore: 1,
-      homeTeam: { id: 'cas', name: 'Castellón', code: 'CAS', logo: '🛡️', form: ['D', 'W', 'W'] },
-      awayTeam: { id: 'alm', name: 'Almería', code: 'ALM', logo: '⚔️', form: ['D', 'L', 'W'] }
-    }
-  ];
+  // 🚨 ડમી મેચ કાઢી નાખી (ખાલી Array) 🚨
+  const minorLeagueFallback: any[] = [];
 
-  const sofaUrl = 'https://sofascore6.p.rapidapi.com/api/sofascore/v1/events/live';
+  // 🚨 તમારા સ્ક્રીનશોટમાંથી લીધેલું એકદમ સાચું URL 🚨
+  const sofaUrl = 'https://sofascore6.p.rapidapi.com/api/sofascore/v1/match/live?sport_slug=football';
   const sofaOptions = {
     method: 'GET',
     headers: {
@@ -116,20 +105,23 @@ app.get('/api/live-matches', async (_req, res) => {
     const sofaResponse = await fetch(sofaUrl, sofaOptions);
     if (!sofaResponse.ok) throw new Error(`API Error: Status ${sofaResponse.status}`);
     const rawData = await sofaResponse.json();
-    const liveEvents = rawData.events || rawData.data || [];
 
-    const footballEvents = liveEvents.filter((event: any) =>
+    // RapidAPI ના ડેટાને એક્સટ્રેક્ટ કરો
+    const liveEvents = rawData.events || rawData.data || rawData || [];
+
+    const footballEvents = Array.isArray(liveEvents) ? liveEvents.filter((event: any) =>
       event.tournament?.category?.sport?.name?.toLowerCase() === 'football' ||
       event.sport?.name?.toLowerCase() === 'football' ||
-      event.homeScore !== undefined
-    );
+      event.homeScore !== undefined ||
+      event.sport_slug === 'football'
+    ) : [];
 
     if (footballEvents.length === 0) {
       matchCache = { data: minorLeagueFallback, timestamp: Date.now() };
       return res.status(200).set(corsHeaders).json({ matches: minorLeagueFallback, cached: false });
     }
 
-    const processedMatches = footballEvents.slice(0, 5).map((event: any) => {
+    const processedMatches = footballEvents.slice(0, 15).map((event: any) => {
       const minuteStr = event.status?.description || "45";
       const parsedMinute = parseInt(minuteStr.replace(/\D/g, '')) || 45;
 
@@ -177,10 +169,10 @@ app.get('/api/live-matches', async (_req, res) => {
   } catch (error: any) {
     console.error("RapidAPI Fetch Error:", error.message);
     res.status(200).set(corsHeaders).json({
-      matches: minorLeagueFallback,
+      matches: [], // એરર આવે તો ડમી મેચને બદલે ખાલી Array મોકલો
       cached: false,
       warning: true,
-      apiErrorDetail: error.message 
+      apiErrorDetail: error.message
     });
   }
 });
