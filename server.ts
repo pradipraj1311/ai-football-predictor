@@ -278,7 +278,7 @@ app.post('/api/predict', async (req, res) => {
   }
 });
 
-// --- SEO ROUTES 
+// SEO ROUTES 
 
 app.get('/sitemap.xml', (_req, res) => {
   res.set('Content-Type', 'text/xml; charset=utf-8');
