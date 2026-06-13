@@ -336,7 +336,6 @@ function App() {
 
             <div className="flex flex-col gap-2 max-h-[600px] overflow-y-auto pr-1">
               {activeTab === 'FINISHED' && (
-                <div className="mb-2 shrink-0 animate-fade-in-up">
                 <div className="mb-4 shrink-0 animate-fade-in-up flex flex-col gap-3">
                   <input
                     type="text"
