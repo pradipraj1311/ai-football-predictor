@@ -1,14 +1,38 @@
 {
   "version": 2,
   "builds": [
-    { "src": "package.json", "use": "@vercel/static-build", "config": { "distDir": "dist" } },
-    { "src": "server.ts", "use": "@vercel/node" }
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
+    },
+    {
+      "src": "server.ts",
+      "use": "@vercel/node"
+    }
   ],
   "routes": [
-    { "src": "/sitemap-index.xml", "dest": "/sitemap-index.xml" },
-    { "src": "/robots.txt", "dest": "/robots.txt" },
-    { "src": "/api/(.*)", "dest": "/server.ts" },
-    { "src": "/.well-known/(.*)", "dest": "/.well-known/$1" },
-    { "src": "/(.*)", "dest": "/index.html" }
-  ]  
+    {
+      "src": "/api/(.*)",
+      "dest": "/server.ts"
+    },
+    {
+      "src": "/sitemap.xml",
+      "dest": "/server.ts"
+    },
+    {
+      "src": "/robots.txt",
+      "dest": "/server.ts"
+    },
+    {
+      "src": "/.well-known/(.*)",
+      "dest": "/.well-known/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+  ]
 }

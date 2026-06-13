@@ -278,6 +278,44 @@ app.post('/api/predict', async (req, res) => {
   }
 });
 
+// --- BRUTE FORCE SEO ROUTES ---
+
+app.get('/sitemap.xml', (_req, res) => {
+  res.setHeader('Content-Type', 'text/xml; charset=utf-8');
+  res.setHeader('Cache-Control', 's-maxage=86400');
+
+  const today = new Date().toISOString().split('T')[0];
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://e2match.vercel.app/</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://e2match.vercel.app/privacy-policy</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://e2match.vercel.app/terms-of-service</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+</urlset>`;
+
+  res.status(200).send(xml);
+});
+
+app.get('/robots.txt', (_req, res) => {
+  res.setHeader('Content-Type', 'text/plain');
+  res.status(200).send("User-agent: *\nAllow: /\n\nSitemap: https://e2match.vercel.app/sitemap.xml");
+});
+
 if (process.env.NODE_ENV !== 'production') {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`API Server running on port ${PORT}`);
