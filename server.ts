@@ -175,10 +175,12 @@ app.get('/api/live-matches', async (_req, res) => {
     matchCache = { data: processedMatches, timestamp: Date.now() };
     res.status(200).set(corsHeaders).json({ matches: processedMatches, cached: false });
   } catch (error: any) {
+    console.error("RapidAPI Fetch Error:", error.message);
     res.status(200).set(corsHeaders).json({
       matches: minorLeagueFallback,
       cached: false,
-      warning: true
+      warning: true,
+      apiErrorDetail: error.message 
     });
   }
 });
