@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://e2match.vercel.app/sitemap.xml
