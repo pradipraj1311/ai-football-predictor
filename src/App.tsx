@@ -357,25 +357,35 @@ function App() {
                         matches
                           .filter((m) => m.status === 'FINISHED')
                           .flatMap((m) => {
-                            const homeName = typeof m.homeTeam === 'object' ? m.homeTeam?.name : m.homeTeam;
-                            const awayName = typeof m.awayTeam === 'object' ? m.awayTeam?.name : m.awayTeam;
-                            
                             const validTeams: any[] = [];
-                            if (homeName && typeof m.homeTeam === 'object') validTeams.push([homeName, m.homeTeam]);
-                            if (awayName && typeof m.awayTeam === 'object') validTeams.push([awayName, m.awayTeam]);
-                            
+                            // Ensure homeTeam exists and has a name
+                            if (m.homeTeam && (m.homeTeam.name || typeof m.homeTeam === 'string')) {
+                              const name = typeof m.homeTeam === 'object' ? m.homeTeam.name : m.homeTeam;
+                              validTeams.push([name, m.homeTeam]);
+                            }
+                            // Ensure awayTeam exists and has a name
+                            if (m.awayTeam && (m.awayTeam.name || typeof m.awayTeam === 'string')) {
+                              const name = typeof m.awayTeam === 'object' ? m.awayTeam.name : m.awayTeam;
+                              validTeams.push([name, m.awayTeam]);
+                            }
                             return validTeams;
                           })
                       ).values()
-                    ).map((team: any) => (
-                      <button
-                        key={team.name || 'unknown'}
-                        onClick={() => setResultFilter(team.name || '')}
-                        className={`shrink-0 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border flex items-center gap-1.5 ${resultFilter.toLowerCase() === (team.name || '').toLowerCase() ? 'bg-indigo-600 text-white border-indigo-500 shadow-[0_0_15px_rgba(79,70,229,0.3)]' : 'bg-[#0B1121] text-slate-400 border-white/5 hover:bg-white/5'}`}
-                      >
-                        <span className="text-sm">{team.logo || '⚽'}</span> {team.code || team.name?.substring(0,3).toUpperCase() || 'UNK'}
-                      </button>
-                    ))}
+                    ).map((team: any) => {
+                      const teamName = typeof team === 'object' ? team.name : team;
+                      const teamCode = typeof team === 'object' ? team.code : team?.substring(0,3).toUpperCase();
+                      const teamLogo = typeof team === 'object' ? team.logo : '⚽';
+                      
+                      return (
+                        <button
+                          key={teamName || Math.random().toString()}
+                          onClick={() => setResultFilter(teamName || '')}
+                          className={`shrink-0 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border flex items-center gap-1.5 ${resultFilter.toLowerCase() === (teamName || '').toLowerCase() ? 'bg-indigo-600 text-white border-indigo-500 shadow-[0_0_15px_rgba(79,70,229,0.3)]' : 'bg-[#0B1121] text-slate-400 border-white/5 hover:bg-white/5'}`}
+                        >
+                          <span className="text-sm">{teamLogo || '⚽'}</span> {teamCode || 'UNK'}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}
