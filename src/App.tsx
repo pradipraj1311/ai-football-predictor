@@ -71,31 +71,51 @@ function App() {
         const dbRes = await fetch(`/api/db-matches?t=${Date.now()}`);
         if (!dbRes.ok) throw new Error("Failed to fetch DB matches");
         const dbData = await dbRes.json();
-        
-        // Determine status on the frontend based on local time
+
+        // Determine status on the frontend based on local time (Bulletproof Version)
         const dbMatches = (dbData.matches || []).map((m: any) => {
           if (m.dbStatus === 'FINISHED') return { ...m, status: 'FINISHED', time: 'FT' };
 
-          // Create kickoff time in user's local timezone (assuming DB time is in UTC)
-          // If your DB time is in IST, you need to adjust it accordingly.
-          const matchDateObj = new Date(`${m.date}T${m.time}:00Z`); 
-          const now = new Date(); // User's current local time
-
           let calculatedStatus = 'UPCOMING';
-          
-          // If the match has started and it's been less than 2 hours (120 minutes), it's LIVE
-          if (now.getTime() >= matchDateObj.getTime() && now.getTime() < matchDateObj.getTime() + (120 * 60000)) {
-            calculatedStatus = 'LIVE';
-          } 
-          // If it's been more than 2 hours and DB doesn't have FT yet, assume it's FINISHED
-          else if (now.getTime() >= matchDateObj.getTime() + (120 * 60000)) {
-            calculatedStatus = 'FINISHED';
-            m.time = 'FT'; // For UI display
+          let displayTime = m.time;
+
+          try {
+            // Safely parse "HH:MM"
+            if (m.time && m.time.includes(':')) {
+              const [hours, minutes] = m.time.split(':').map(Number);
+
+              // Create a date object in the USER's local timezone based on the DB date
+              const matchDateObj = new Date(m.date);
+
+              // Define the offset. IST is UTC+5:30 (330 minutes)
+              const istOffsetMinutes = 330;
+              // Get the user's local offset in minutes
+              const localOffsetMinutes = -matchDateObj.getTimezoneOffset();
+
+              // Calculate the difference
+              const offsetDifference = localOffsetMinutes - istOffsetMinutes;
+
+              // Apply the hours/minutes from the database, then adjust for the timezone difference
+              matchDateObj.setHours(hours, minutes + offsetDifference, 0, 0);
+
+              const now = new Date(); // User's current local time
+              const twoHoursInMillis = 120 * 60000;
+
+              // Logic check
+              if (now.getTime() >= matchDateObj.getTime() && now.getTime() < (matchDateObj.getTime() + twoHoursInMillis)) {
+                calculatedStatus = 'LIVE';
+              } else if (now.getTime() >= (matchDateObj.getTime() + twoHoursInMillis)) {
+                calculatedStatus = 'FINISHED';
+                displayTime = 'FT';
+              }
+            }
+          } catch (e) {
+            console.error("Time parsing error for match:", m.id, e);
           }
 
-          return { ...m, status: calculatedStatus };
+          return { ...m, status: calculatedStatus, time: displayTime };
         });
-        console.log("DB Matches loaded with local timezone status:", dbMatches.length);
+        console.log("DB Matches loaded with robust local timezone status:", dbMatches.length);
 
         // 2. Fetch from Live API
         console.log("Fetching live matches from API..."); // Debugging log
