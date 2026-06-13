@@ -151,8 +151,9 @@ function App() {
         );
 
         validMatchesToCalculate.forEach((m: Match) => {
-          const homeScore = m.homeScore || 0;
-          const awayScore = m.awayScore || 0;
+          // 🚨 FIX: Force scores to be numbers, default to 0 if missing/null
+          const homeScore = Number(m.homeScore) || 0;
+          const awayScore = Number(m.awayScore) || 0;
           const homeName = typeof m.homeTeam === 'object' ? m.homeTeam.name.toLowerCase() : m.homeTeam.toLowerCase();
           const awayName = typeof m.awayTeam === 'object' ? m.awayTeam.name.toLowerCase() : m.awayTeam.toLowerCase();
 
@@ -178,8 +179,8 @@ function App() {
                   else if (awayScore < homeScore) { team.lose += 1; }
                   else { team.draw += 1; team.points += 1; }
                 }
-                // Update GD inside the loop
-                team.gd = team.goalsFor - team.goalsAgainst;
+                // 🚨 FIX: Ensure GD is a valid number before moving on
+                team.gd = (team.goalsFor || 0) - (team.goalsAgainst || 0);
               }
             });
           });
@@ -194,7 +195,9 @@ function App() {
 
           group.entries.forEach((team: any, idx: number) => {
             team.rank = idx + 1;
-            team.gd = team.gd > 0 ? `+${team.gd}` : `${team.gd}`; // Format GD for UI
+            // Safe formatting for GD
+            const validGd = Number(team.gd) || 0;
+            team.gd = validGd > 0 ? `+${validGd}` : `${validGd}`;
           });
         });
 
@@ -321,7 +324,18 @@ function App() {
                 ) : (
                   filteredMatches.map((match, index) => (
                     <div key={match.id} className="animate-fade-in-up" style={{ animationDelay: `${index * 50}ms` }}>
-                      <MatchCard match={match} isSelected={selectedMatch?.id === match.id && !selectedTeam} onSelect={() => { setSelectedMatch(match); setSelectedTeam(null); }} />
+                      <MatchCard
+                        match={match}
+                        isSelected={selectedMatch?.id === match.id && !selectedTeam}
+                        onSelect={() => {
+                          setSelectedMatch(match);
+                          setSelectedTeam(null);
+                          // 🚨 ADDED: Smooth scroll for mobile users
+                          setTimeout(() => {
+                            document.getElementById('ai-analysis-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                          }, 100);
+                        }}
+                      />
                     </div>
                   ))
                 )
@@ -339,7 +353,7 @@ function App() {
             </div>
           </div>
 
-          <div className="lg:col-span-8 xl:col-span-9 flex flex-col gap-6">
+          <div className="lg:col-span-8 xl:col-span-9 flex flex-col gap-6" id="ai-analysis-section">
             {activeTab === 'STANDINGS' ? (
               <StandingsGrid standings={standings} />
             ) : activeTab === 'TEAMS' && selectedTeam ? (
