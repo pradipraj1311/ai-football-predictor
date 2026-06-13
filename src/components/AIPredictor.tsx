@@ -12,7 +12,7 @@ export const AIPredictor: React.FC<{ match: Match }> = ({ match }) => {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Audio & Heatmap States
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [selectedPlayerForHeatmap, setSelectedPlayerForHeatmap] = useState<any>(null);
@@ -48,7 +48,7 @@ export const AIPredictor: React.FC<{ match: Match }> = ({ match }) => {
         window.speechSynthesis.cancel();
       }
     };
-  }, [match.id, match.homeScore, match.awayScore]); 
+  }, [match.id, match.homeScore, match.awayScore]);
 
   // --- 🎙️ AI VOICE COMMENTARY LOGIC ---
   const toggleSpeech = () => {
@@ -59,12 +59,14 @@ export const AIPredictor: React.FC<{ match: Match }> = ({ match }) => {
         window.speechSynthesis.cancel();
       }
       setIsSpeaking(false);
-    } else {
+   } else {
       if ('speechSynthesis' in window) {
-        const script = `Live intelligence update for ${match.homeTeam.name} versus ${match.awayTeam.name}. ${data.analysis} The current projected outcome is ${data.suggestedScore}.`;
-        
+        const homeName = match.homeTeam?.name || 'Home Team';
+        const awayName = match.awayTeam?.name || 'Away Team';
+        const script = `Live intelligence update for ${homeName} versus ${awayName}. ${data.analysis} The current projected outcome is ${data.suggestedScore}.`;
+
         const utterance = new SpeechSynthesisUtterance(script);
-        utterance.rate = 1.1; 
+        utterance.rate = 1.1;
         utterance.pitch = 1.0;
         utterance.lang = 'en-US';
 
@@ -113,21 +115,21 @@ export const AIPredictor: React.FC<{ match: Match }> = ({ match }) => {
     <>
       {/* GLOBAL AUDIO CONTROLLER - Highly Visible */}
       <div className="mb-4 bg-indigo-900/20 border border-indigo-500/30 rounded-xl p-3 flex items-center justify-between shadow-lg">
-         <div className="flex items-center gap-3">
-            <div className={`p-2 rounded-full ${isSpeaking ? 'bg-red-500/20 text-red-400 animate-pulse' : 'bg-indigo-500/20 text-indigo-400'}`}>
-               <Volume2 className="w-5 h-5" />
-            </div>
-            <div>
-               <h4 className="text-xs font-black text-white tracking-widest uppercase">AI Audio Commentary</h4>
-               <p className="text-[10px] text-slate-400">Listen to real-time tactical breakdowns</p>
-            </div>
-         </div>
-         <button 
-            onClick={toggleSpeech}
-            className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all shadow-xl ${isSpeaking ? 'bg-red-500 hover:bg-red-600 text-white shadow-red-500/20' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20'}`}
-         >
-            {isSpeaking ? <span className="flex items-center gap-2"><Square className="w-3.5 h-3.5 fill-current" /> Stop Audio</span> : <span className="flex items-center gap-2">▶ Play Now</span>}
-         </button>
+        <div className="flex items-center gap-3">
+          <div className={`p-2 rounded-full ${isSpeaking ? 'bg-red-500/20 text-red-400 animate-pulse' : 'bg-indigo-500/20 text-indigo-400'}`}>
+            <Volume2 className="w-5 h-5" />
+          </div>
+          <div>
+            <h4 className="text-xs font-black text-white tracking-widest uppercase">AI Audio Commentary</h4>
+            <p className="text-[10px] text-slate-400">Listen to real-time tactical breakdowns</p>
+          </div>
+        </div>
+        <button
+          onClick={toggleSpeech}
+          className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all shadow-xl ${isSpeaking ? 'bg-red-500 hover:bg-red-600 text-white shadow-red-500/20' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20'}`}
+        >
+          {isSpeaking ? <span className="flex items-center gap-2"><Square className="w-3.5 h-3.5 fill-current" /> Stop Audio</span> : <span className="flex items-center gap-2">▶ Play Now</span>}
+        </button>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 w-full">
@@ -168,7 +170,7 @@ export const AIPredictor: React.FC<{ match: Match }> = ({ match }) => {
               </div>
               <div className="grid grid-cols-3 gap-2 mb-4">
                 <div className="bg-[#0f172a] border border-white/5 rounded-lg p-2 text-center hover:border-emerald-500/30 transition-colors">
-                  <span className="block text-[9px] text-slate-400 uppercase font-bold mb-0.5">1 ({match.homeTeam.code})</span>
+                  <span className="block text-[9px] text-slate-400 uppercase font-bold mb-0.5">1 ({match.homeTeam?.code || 'HOM'})</span>
                   <span className="font-mono font-black text-emerald-400">{oddsHome}</span>
                 </div>
                 <div className="bg-[#0f172a] border border-white/5 rounded-lg p-2 text-center hover:border-slate-400/30 transition-colors">
@@ -176,7 +178,7 @@ export const AIPredictor: React.FC<{ match: Match }> = ({ match }) => {
                   <span className="font-mono font-black text-slate-300">{oddsDraw}</span>
                 </div>
                 <div className="bg-[#0f172a] border border-white/5 rounded-lg p-2 text-center hover:border-blue-500/30 transition-colors">
-                  <span className="block text-[9px] text-slate-400 uppercase font-bold mb-0.5">2 ({match.awayTeam.code})</span>
+                  <span className="block text-[9px] text-slate-400 uppercase font-bold mb-0.5">2 ({match.awayTeam?.code || 'AWY'})</span>
                   <span className="font-mono font-black text-blue-400">{oddsAway}</span>
                 </div>
               </div>
@@ -220,11 +222,11 @@ export const AIPredictor: React.FC<{ match: Match }> = ({ match }) => {
                   </h5>
                   <div className="space-y-3">
                     <div>
-                      <span className="text-[10px] text-slate-500 font-bold uppercase block mb-0.5">{match.homeTeam.code} Weakness</span>
+                      <span className="text-[10px] text-slate-500 font-bold uppercase block mb-0.5">{match.homeTeam?.code || 'HOM'} Weakness</span>
                       <p className="text-xs text-slate-300">{data.vulnerabilities?.home || "Analyzing..."}</p>
                     </div>
                     <div>
-                      <span className="text-[10px] text-slate-500 font-bold uppercase block mb-0.5">{match.awayTeam.code} Weakness</span>
+                      <span className="text-[10px] text-slate-500 font-bold uppercase block mb-0.5">{match.awayTeam?.code || 'AWY'} Weakness</span>
                       <p className="text-xs text-slate-300">{data.vulnerabilities?.away || "Analyzing..."}</p>
                     </div>
                   </div>
@@ -271,18 +273,18 @@ export const AIPredictor: React.FC<{ match: Match }> = ({ match }) => {
 
             <div className="space-y-2 mt-4">
               <div className="flex justify-between items-end mb-2">
-                 <span className="text-[10px] font-black text-slate-400 tracking-widest uppercase block">Live Top Performers</span>
-                 <span className="text-[8px] text-indigo-400 font-bold uppercase animate-pulse">Click player for Heatmap</span>
+                <span className="text-[10px] font-black text-slate-400 tracking-widest uppercase block">Live Top Performers</span>
+                <span className="text-[8px] text-indigo-400 font-bold uppercase animate-pulse">Click player for Heatmap</span>
               </div>
-              
+
               {data.advisor?.bestXI?.map((player: any, idx: number) => (
-                <div 
-                   key={idx} 
-                   onClick={() => setSelectedPlayerForHeatmap(player)}
-                   className="bg-[#0f172a] p-3 rounded-xl border border-white/5 flex flex-col gap-2 hover:border-indigo-500/50 hover:bg-indigo-900/10 cursor-pointer transition-all group relative overflow-hidden"
+                <div
+                  key={idx}
+                  onClick={() => setSelectedPlayerForHeatmap(player)}
+                  className="bg-[#0f172a] p-3 rounded-xl border border-white/5 flex flex-col gap-2 hover:border-indigo-500/50 hover:bg-indigo-900/10 cursor-pointer transition-all group relative overflow-hidden"
                 >
                   <div className="absolute top-1/2 right-4 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
-                     <MapPin className="w-5 h-5 text-indigo-400/50" />
+                    <MapPin className="w-5 h-5 text-indigo-400/50" />
                   </div>
                   <div className="flex justify-between items-start">
                     <div className="flex flex-col">
@@ -306,51 +308,51 @@ export const AIPredictor: React.FC<{ match: Match }> = ({ match }) => {
       {/* 🗺️ MODAL: AI Player Heatmap */}
       {selectedPlayerForHeatmap && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-           <div className="bg-[#0B1121] border border-indigo-500/30 rounded-2xl max-w-md w-full shadow-[0_0_50px_rgba(79,70,229,0.15)] overflow-hidden">
-              <div className="bg-gradient-to-r from-indigo-900/40 to-[#0B1121] p-4 flex justify-between items-center border-b border-white/5">
-                 <div className="flex items-center gap-3">
-                    <div className="p-2 bg-indigo-500/20 rounded-lg">
-                       <MapPin className="w-5 h-5 text-indigo-400" />
-                    </div>
-                    <div>
-                       <h3 className="text-white font-black">{selectedPlayerForHeatmap.name}</h3>
-                       <p className="text-[10px] text-slate-400 uppercase tracking-widest font-mono">Live Positional Heatmap</p>
-                    </div>
-                 </div>
-                 <button onClick={() => setSelectedPlayerForHeatmap(null)} className="text-slate-500 hover:text-white p-2">✕</button>
+          <div className="bg-[#0B1121] border border-indigo-500/30 rounded-2xl max-w-md w-full shadow-[0_0_50px_rgba(79,70,229,0.15)] overflow-hidden">
+            <div className="bg-gradient-to-r from-indigo-900/40 to-[#0B1121] p-4 flex justify-between items-center border-b border-white/5">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-indigo-500/20 rounded-lg">
+                  <MapPin className="w-5 h-5 text-indigo-400" />
+                </div>
+                <div>
+                  <h3 className="text-white font-black">{selectedPlayerForHeatmap.name}</h3>
+                  <p className="text-[10px] text-slate-400 uppercase tracking-widest font-mono">Live Positional Heatmap</p>
+                </div>
               </div>
-              
-              <div className="p-6">
-                 {/* CSS Pitch Representation */}
-                 <div className="w-full h-48 bg-emerald-900/20 border-2 border-white/10 rounded-lg relative overflow-hidden flex items-center justify-center">
-                    {/* Pitch Lines */}
-                    <div className="absolute w-full h-px bg-white/10"></div>
-                    <div className="absolute w-16 h-16 border-2 border-white/10 rounded-full"></div>
-                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-8 h-16 border-2 border-l-0 border-white/10"></div>
-                    <div className="absolute right-0 top-1/2 -translate-y-1/2 w-8 h-16 border-2 border-r-0 border-white/10"></div>
-                    
-                    {/* Fake Heatmap Blobs (Simulated based on rating) */}
-                    <div className="absolute w-24 h-24 bg-red-500/40 blur-xl rounded-full" style={{ left: '60%', top: '30%' }}></div>
-                    <div className="absolute w-32 h-20 bg-amber-500/30 blur-xl rounded-full" style={{ left: '40%', top: '40%' }}></div>
-                    <div className="absolute w-16 h-16 bg-red-600/50 blur-lg rounded-full" style={{ left: '75%', top: '50%' }}></div>
-                 </div>
+              <button onClick={() => setSelectedPlayerForHeatmap(null)} className="text-slate-500 hover:text-white p-2">✕</button>
+            </div>
 
-                 <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-                    <div className="bg-slate-900/50 p-2 rounded border border-white/5">
-                       <span className="block text-[9px] text-slate-500 uppercase tracking-widest">Touches</span>
-                       <span className="text-white font-mono font-bold">{(parseFloat(selectedPlayerForHeatmap.rating) * 5.2).toFixed(0)}</span>
-                    </div>
-                    <div className="bg-slate-900/50 p-2 rounded border border-white/5">
-                       <span className="block text-[9px] text-slate-500 uppercase tracking-widest">Distance</span>
-                       <span className="text-white font-mono font-bold">{(parseFloat(selectedPlayerForHeatmap.rating) * 1.1).toFixed(1)}km</span>
-                    </div>
-                    <div className="bg-slate-900/50 p-2 rounded border border-white/5">
-                       <span className="block text-[9px] text-slate-500 uppercase tracking-widest">Heat Zone</span>
-                       <span className="text-red-400 font-mono font-bold uppercase text-[10px]">Final Third</span>
-                    </div>
-                 </div>
+            <div className="p-6">
+              {/* CSS Pitch Representation */}
+              <div className="w-full h-48 bg-emerald-900/20 border-2 border-white/10 rounded-lg relative overflow-hidden flex items-center justify-center">
+                {/* Pitch Lines */}
+                <div className="absolute w-full h-px bg-white/10"></div>
+                <div className="absolute w-16 h-16 border-2 border-white/10 rounded-full"></div>
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-8 h-16 border-2 border-l-0 border-white/10"></div>
+                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-8 h-16 border-2 border-r-0 border-white/10"></div>
+
+                {/* Fake Heatmap Blobs (Simulated based on rating) */}
+                <div className="absolute w-24 h-24 bg-red-500/40 blur-xl rounded-full" style={{ left: '60%', top: '30%' }}></div>
+                <div className="absolute w-32 h-20 bg-amber-500/30 blur-xl rounded-full" style={{ left: '40%', top: '40%' }}></div>
+                <div className="absolute w-16 h-16 bg-red-600/50 blur-lg rounded-full" style={{ left: '75%', top: '50%' }}></div>
               </div>
-           </div>
+
+              <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                <div className="bg-slate-900/50 p-2 rounded border border-white/5">
+                  <span className="block text-[9px] text-slate-500 uppercase tracking-widest">Touches</span>
+                  <span className="text-white font-mono font-bold">{(parseFloat(selectedPlayerForHeatmap.rating) * 5.2).toFixed(0)}</span>
+                </div>
+                <div className="bg-slate-900/50 p-2 rounded border border-white/5">
+                  <span className="block text-[9px] text-slate-500 uppercase tracking-widest">Distance</span>
+                  <span className="text-white font-mono font-bold">{(parseFloat(selectedPlayerForHeatmap.rating) * 1.1).toFixed(1)}km</span>
+                </div>
+                <div className="bg-slate-900/50 p-2 rounded border border-white/5">
+                  <span className="block text-[9px] text-slate-500 uppercase tracking-widest">Heat Zone</span>
+                  <span className="text-red-400 font-mono font-bold uppercase text-[10px]">Final Third</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </>

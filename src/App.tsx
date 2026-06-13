@@ -13,7 +13,6 @@ import { PrivacyPolicy } from './components/PrivacyPolicy';
 import { TermsOfService } from './components/TermsOfService';
 import { GLOBAL_TEAMS_DIRECTORY, WORLD_CUP_STANDINGS, FootballTeamProfile } from './data';
 import { BrainCircuit, Shield, Calendar, History, Globe, Coins, CloudRain, Thermometer, BellRing, Target, ListOrdered, Activity, Trophy } from 'lucide-react';
-import { Analytics } from '@vercel/analytics/nuxt/runtime';
 
 function App() {
 
@@ -170,8 +169,8 @@ function App() {
           // 🚨 FIX: Force scores to be numbers, default to 0 if missing/null
           const homeScore = Number(m.homeScore) || 0;
           const awayScore = Number(m.awayScore) || 0;
-          const homeName = typeof m.homeTeam === 'object' ? m.homeTeam.name.toLowerCase() : m.homeTeam.toLowerCase();
-          const awayName = typeof m.awayTeam === 'object' ? m.awayTeam.name.toLowerCase() : m.awayTeam.toLowerCase();
+        const homeName = typeof m.homeTeam === 'object' ? (m.homeTeam?.name || '').toLowerCase() : String(m.homeTeam || '').toLowerCase();
+        const awayName = typeof m.awayTeam === 'object' ? (m.awayTeam?.name || '').toLowerCase() : String(m.awayTeam || '').toLowerCase();
 
           newStandings.forEach((group: any) => {
             group.entries.forEach((team: any) => {
@@ -272,9 +271,9 @@ function App() {
       if (m.status !== 'FINISHED') return false;
       if (resultFilter) {
         const search = resultFilter.toLowerCase();
-        return m.homeTeam.name.toLowerCase().includes(search) || 
-               m.awayTeam.name.toLowerCase().includes(search) || 
-               m.competition.toLowerCase().includes(search);
+        return (m.homeTeam?.name || m.homeTeam || '').toString().toLowerCase().includes(search) || 
+               (m.awayTeam?.name || m.awayTeam || '').toString().toLowerCase().includes(search) || 
+               (m.competition || '').toString().toLowerCase().includes(search);
       }
       return true;
     }
