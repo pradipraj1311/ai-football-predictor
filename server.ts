@@ -49,7 +49,7 @@ app.get('/api/db-matches', async (_req, res) => {
         id: row.id,
         competition: row.competition || 'FIFA World Cup 2026',
         dbStatus: row.match_time === 'FT' ? 'FINISHED' : 'SCHEDULED', // Send what the database says
-        time: row.match_time, 
+        time: row.match_time,
         date: new Date(row.match_date).toISOString().split('T')[0],
         homeTeam: {
           id: row.home_team_id || homeTeamName.toLowerCase().replace(/\s/g, '-'),
@@ -134,14 +134,15 @@ app.get('/api/live-matches', async (_req, res) => {
       const parsedMinute = parseInt(minuteStr.replace(/\D/g, '')) || 45;
 
       const statusType = event.status?.type?.toLowerCase() || '';
-      
-      // EXTREME AGGRESSIVE STATUS MAPPING
-      let mappedStatus = 'UPCOMING'; 
-      if (['finished', 'closed', 'ended', 'ft', 'aet', 'pen'].includes(statusType)) {
+      const statusCode = event.status?.code;
+
+      // EXTREME AGGRESSIVE STATUS MAPPING (UPGRADED)
+      let mappedStatus = 'UPCOMING';
+      if (['finished', 'closed', 'ended', 'ft', 'aet', 'pen', 'afterpenalties'].includes(statusType) || statusCode === 100 || statusCode === 120) {
         mappedStatus = 'FINISHED';
-      } else if (['inprogress', 'live', '1st half', '2nd half', 'halftime'].includes(statusType) || event.status?.code === 6) {
+      } else if (['inprogress', 'live', '1st half', '2nd half', 'halftime', 'extratime'].includes(statusType) || (statusCode && statusCode >= 6 && statusCode <= 50)) {
         mappedStatus = 'LIVE';
-      } else if (statusType === 'canceled') {
+      } else if (['canceled', 'postponed', 'delayed'].includes(statusType)) {
         mappedStatus = 'POSTPONED';
       }
 
