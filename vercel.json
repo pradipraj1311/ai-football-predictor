@@ -5,7 +5,7 @@
     { "src": "server.ts", "use": "@vercel/node" }
   ],
   "routes": [
-    { "src": "/sitemap.xml", "dest": "/sitemap.xml" },
+    { "src": "/sitemap-index.xml", "dest": "/sitemap-index.xml" },
     { "src": "/robots.txt", "dest": "/robots.txt" },
     { "src": "/api/(.*)", "dest": "/server.ts" },
     { "src": "/.well-known/(.*)", "dest": "/.well-known/$1" },
