@@ -5,7 +5,8 @@
     { "src": "server.ts", "use": "@vercel/node" }
   ],
   "rewrites": [
-    { "source": "/sitemap-index.xml", "destination": "/sitemap-index.xml" },
+    { "source": "/sitemap.xml", "destination": "/server.ts" },
+    { "source": "/robots.txt", "destination": "/server.ts" },
     { "source": "/api/(.*)", "destination": "/server.ts" },
     { "source": "/.well-known/(.*)", "destination": "/.well-known/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
