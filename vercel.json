@@ -10,5 +10,5 @@
     { "src": "/api/(.*)", "dest": "/server.ts" },
     { "src": "/.well-known/(.*)", "dest": "/.well-known/$1" },
     { "src": "/(.*)", "dest": "/index.html" }
-  ]
+  ]  
 }
