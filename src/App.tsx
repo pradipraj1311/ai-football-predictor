@@ -357,18 +357,24 @@ function App() {
                       new Map(
                         matches
                           .filter((m) => m.status === 'FINISHED')
-                          .flatMap((m) => [
-                            [m.homeTeam.name, m.homeTeam],
-                            [m.awayTeam.name, m.awayTeam],
-                          ])
+                          .flatMap((m) => {
+                            const homeName = typeof m.homeTeam === 'object' ? m.homeTeam?.name : m.homeTeam;
+                            const awayName = typeof m.awayTeam === 'object' ? m.awayTeam?.name : m.awayTeam;
+                            
+                            const validTeams: any[] = [];
+                            if (homeName && typeof m.homeTeam === 'object') validTeams.push([homeName, m.homeTeam]);
+                            if (awayName && typeof m.awayTeam === 'object') validTeams.push([awayName, m.awayTeam]);
+                            
+                            return validTeams;
+                          })
                       ).values()
-                    ).map((team) => (
+                    ).map((team: any) => (
                       <button
-                        key={team.name}
-                        onClick={() => setResultFilter(team.name)}
-                        className={`shrink-0 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border flex items-center gap-1.5 ${resultFilter.toLowerCase() === team.name.toLowerCase() ? 'bg-indigo-600 text-white border-indigo-500 shadow-[0_0_15px_rgba(79,70,229,0.3)]' : 'bg-[#0B1121] text-slate-400 border-white/5 hover:bg-white/5'}`}
+                        key={team.name || 'unknown'}
+                        onClick={() => setResultFilter(team.name || '')}
+                        className={`shrink-0 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border flex items-center gap-1.5 ${resultFilter.toLowerCase() === (team.name || '').toLowerCase() ? 'bg-indigo-600 text-white border-indigo-500 shadow-[0_0_15px_rgba(79,70,229,0.3)]' : 'bg-[#0B1121] text-slate-400 border-white/5 hover:bg-white/5'}`}
                       >
-                        <span className="text-sm">{team.logo}</span> {team.code}
+                        <span className="text-sm">{team.logo || '⚽'}</span> {team.code || team.name?.substring(0,3).toUpperCase() || 'UNK'}
                       </button>
                     ))}
                   </div>
