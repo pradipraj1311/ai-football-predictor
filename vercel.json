@@ -15,10 +15,6 @@
   ],
   "routes": [
     {
-      "src": "/assets/(.*)",
-      "dest": "/assets/$1"
-    },
-    {
       "src": "/api/(.*)",
       "dest": "/server.ts"
     },
@@ -35,7 +31,7 @@
       "dest": "/.well-known/$1"
     },
     {
-      "src": "/(.*)",
+      "src": "/((?!.*\\.\\w+$).*)",
       "dest": "/index.html"
     }
   ]
