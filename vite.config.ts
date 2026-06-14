@@ -5,11 +5,11 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
   plugins: [
-    react(), 
+    react(),
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['pwa-icon.svg'], 
+      includeAssets: ['pwa-icon.svg'],
       manifest: {
         name: 'E2match AI Predictor',
         short_name: 'E2match',
@@ -19,7 +19,7 @@ export default defineConfig({
         display: 'standalone',
         icons: [
           {
-            src: '/pwa-icon.svg',  
+            src: '/pwa-icon.svg',
             sizes: 'any',
             type: 'image/svg+xml',
             purpose: 'any maskable'
@@ -27,7 +27,7 @@ export default defineConfig({
         ]
       },
       workbox: {
-        navigateFallbackDenylist: [/^\/sitemap-index\.xml$/, /^\/robots\.txt$/]
+        navigateFallbackDenylist: [/^\/sitemap\.xml$/, /^\/robots\.txt$/]
       }
     })
   ],
@@ -36,5 +36,8 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    proxy: {
+      '/api': 'http://localhost:3000'
+    }
   },
 });

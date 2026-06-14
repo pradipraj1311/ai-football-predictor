@@ -18,7 +18,8 @@ function App() {
 
   const [matches, setMatches] = useState<Match[]>([]);
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
-  const [standings, setStandings] = useState(WORLD_CUP_STANDINGS);
+  const [dynamicStandings, setDynamicStandings] = useState<Record<string, any>>({ 'FIFA World Cup 2026': WORLD_CUP_STANDINGS });
+  const [selectedTournament, setSelectedTournament] = useState<string>('FIFA World Cup 2026');
   const [selectedTeam, setSelectedTeam] = useState<FootballTeamProfile | null>(null);
   const [activeTab, setActiveTab] = useState<'LIVE' | 'UPCOMING' | 'FINISHED' | 'TEAMS' | 'STANDINGS'>('LIVE');
   const [timeLeft, setTimeLeft] = useState({ d: 0, h: 0, m: 0, s: 0 });
@@ -67,11 +68,17 @@ function App() {
   useEffect(() => {
     const fetchAllMatches = async () => {
       try {
-        console.log("Fetching matches from DB..."); // Debugging log
-        // 1. Fetch from Database (Added timestamp to bypass aggressive browser caching)
-        const dbRes = await fetch(`/api/db-matches?t=${Date.now()}`);
-        if (!dbRes.ok) throw new Error("Failed to fetch DB matches");
-        const dbData = await dbRes.json();
+        let dbData = { matches: [] };
+        try {
+          const dbRes = await fetch(`/api/db-matches?t=${Date.now()}`);
+          if (dbRes.ok) {
+            dbData = await dbRes.json();
+          } else {
+            console.warn(`DB Fetch failed with status: ${dbRes.status}`);
+          }
+        } catch (e) {
+          console.warn("DB Fetch network error:", e);
+        }
 
         // Determine status on the frontend based on local time (Bulletproof Version)
         const dbMatches = (dbData.matches || []).map((m: any) => {
@@ -116,17 +123,14 @@ function App() {
 
           return { ...m, status: calculatedStatus, time: displayTime };
         });
-        console.log("DB Matches loaded with robust local timezone status:", dbMatches.length);
 
         // 2. Fetch from Live API
-        console.log("Fetching live matches from API..."); // Debugging log
         const liveRes = await fetch(`/api/live-matches?t=${Date.now()}`);
         let liveMatches = [];
         if (liveRes.ok) {
           const liveData = await liveRes.json();
           liveMatches = liveData.matches || [];
         }
-        console.log("Live Matches loaded:", liveMatches.length); // Debugging log
 
         // --- NEW: Preserve finished matches from live API ---
         liveMatches.forEach((m: Match) => {
@@ -149,74 +153,88 @@ function App() {
 
         const combinedMatches = [...liveMatches, ...persistentFinishedMatches, ...nonLiveDbMatches];
 
-        console.log("Total Combined Matches:", combinedMatches.length); // Debugging log
-
         // State Update
         setMatches(combinedMatches);
 
-        // --- NEW: DYNAMIC STANDINGS ENGINE ---
-        let newStandings = JSON.parse(JSON.stringify(WORLD_CUP_STANDINGS));
+        // --- NEW: FULLY DYNAMIC TOURNAMENT STANDINGS ENGINE ---
+        let newDynamicStandings: Record<string, any[]> = {
+          'FIFA World Cup 2026': JSON.parse(JSON.stringify(WORLD_CUP_STANDINGS))
+        };
 
-        // Safely extract all matches that actually have scores to calculate
         const validMatchesToCalculate = combinedMatches.filter((m: Match) =>
           (m.status === 'FINISHED' || m.status === 'LIVE') &&
           m.homeScore !== undefined &&
-          m.awayScore !== undefined &&
-          (m.competition.toLowerCase().includes('world cup') || m.competition === 'FIFA World Cup 2026')
+          m.awayScore !== undefined
         );
 
         validMatchesToCalculate.forEach((m: Match) => {
-          // 🚨 FIX: Force scores to be numbers, default to 0 if missing/null
+          const comp = m.competition || 'Other Competitions';
+          if (!newDynamicStandings[comp]) {
+            newDynamicStandings[comp] = [{ groupName: `${comp} Table`, entries: [] }];
+          }
+
           const homeScore = Number(m.homeScore) || 0;
           const awayScore = Number(m.awayScore) || 0;
-        const homeName = typeof m.homeTeam === 'object' ? (m.homeTeam?.name || '').toLowerCase() : String(m.homeTeam || '').toLowerCase();
-        const awayName = typeof m.awayTeam === 'object' ? (m.awayTeam?.name || '').toLowerCase() : String(m.awayTeam || '').toLowerCase();
+          
+          const homeNameStr = typeof m.homeTeam === 'object' ? (m.homeTeam?.name || 'Home') : String(m.homeTeam || 'Home');
+          const awayNameStr = typeof m.awayTeam === 'object' ? (m.awayTeam?.name || 'Away') : String(m.awayTeam || 'Away');
+          const homeCode = typeof m.homeTeam === 'object' ? m.homeTeam?.code : homeNameStr.substring(0,3).toUpperCase();
+          const awayCode = typeof m.awayTeam === 'object' ? m.awayTeam?.code : awayNameStr.substring(0,3).toUpperCase();
+          const homeLogo = typeof m.homeTeam === 'object' ? m.homeTeam?.logo : '⚽';
+          const awayLogo = typeof m.awayTeam === 'object' ? m.awayTeam?.logo : '⚽';
 
-          newStandings.forEach((group: any) => {
-            group.entries.forEach((team: any) => {
-              // Safe name matching (bypasses 3-letter code mismatches)
-              const isHome = team.teamName.toLowerCase().includes(homeName) || homeName.includes(team.teamName.toLowerCase());
-              const isAway = team.teamName.toLowerCase().includes(awayName) || awayName.includes(team.teamName.toLowerCase());
+          const findOrCreateTeam = (teamName: string, code: string, logo: string) => {
+            let foundTeam: any = null;
+            newDynamicStandings[comp].forEach(group => {
+              const t = group.entries.find((e: any) => 
+                e.teamName.toLowerCase().includes(teamName.toLowerCase()) || 
+                teamName.toLowerCase().includes(e.teamName.toLowerCase())
+              );
+              if (t) foundTeam = t;
+            });
+            if (!foundTeam) {
+              foundTeam = { rank: 0, teamName, code: code || 'UNK', logo: logo || '⚽', played: 0, win: 0, draw: 0, lose: 0, goalsFor: 0, goalsAgainst: 0, gd: 0, points: 0 };
+              newDynamicStandings[comp][0].entries.push(foundTeam);
+            }
+            return foundTeam;
+          };
 
-              if (isHome || isAway) {
-                team.played += 1;
-                if (isHome) {
-                  team.goalsFor += homeScore;
-                  team.goalsAgainst += awayScore;
-                  if (homeScore > awayScore) { team.win += 1; team.points += 3; }
-                  else if (homeScore < awayScore) { team.lose += 1; }
-                  else { team.draw += 1; team.points += 1; }
-                }
-                if (isAway) {
-                  team.goalsFor += awayScore;
-                  team.goalsAgainst += homeScore;
-                  if (awayScore > homeScore) { team.win += 1; team.points += 3; }
-                  else if (awayScore < homeScore) { team.lose += 1; }
-                  else { team.draw += 1; team.points += 1; }
-                }
-                // 🚨 FIX: Ensure GD is a valid number before moving on
-                team.gd = (team.goalsFor || 0) - (team.goalsAgainst || 0);
-              }
+          const hTeam = findOrCreateTeam(homeNameStr, homeCode, homeLogo);
+          const aTeam = findOrCreateTeam(awayNameStr, awayCode, awayLogo);
+
+          hTeam.played += 1;
+          hTeam.goalsFor += homeScore;
+          hTeam.goalsAgainst += awayScore;
+          if (homeScore > awayScore) { hTeam.win += 1; hTeam.points += 3; }
+          else if (homeScore < awayScore) { hTeam.lose += 1; }
+          else { hTeam.draw += 1; hTeam.points += 1; }
+          hTeam.gd = hTeam.goalsFor - hTeam.goalsAgainst;
+
+          aTeam.played += 1;
+          aTeam.goalsFor += awayScore;
+          aTeam.goalsAgainst += homeScore;
+          if (awayScore > homeScore) { aTeam.win += 1; aTeam.points += 3; }
+          else if (awayScore < homeScore) { aTeam.lose += 1; }
+          else { aTeam.draw += 1; aTeam.points += 1; }
+          aTeam.gd = aTeam.goalsFor - aTeam.goalsAgainst;
+        });
+
+        // 3. Sort and Rank the Groups
+        Object.keys(newDynamicStandings).forEach(comp => {
+          newDynamicStandings[comp].forEach((group: any) => {
+            group.entries.sort((a: any, b: any) => {
+              if (b.points !== a.points) return b.points - a.points;
+              return Number(b.gd) - Number(a.gd);
+            });
+            group.entries.forEach((team: any, idx: number) => {
+              team.rank = idx + 1;
+              const validGd = Number(team.gd) || 0;
+              team.gd = validGd > 0 ? `+${validGd}` : `${validGd}`;
             });
           });
         });
 
-        // 3. Sort and Rank the Groups
-        newStandings.forEach((group: any) => {
-          group.entries.sort((a: any, b: any) => {
-            if (b.points !== a.points) return b.points - a.points;
-            return b.gd - a.gd; // Sort by Goal Difference if points are tied
-          });
-
-          group.entries.forEach((team: any, idx: number) => {
-            team.rank = idx + 1;
-            // Safe formatting for GD
-            const validGd = Number(team.gd) || 0;
-            team.gd = validGd > 0 ? `+${validGd}` : `${validGd}`;
-          });
-        });
-
-        setStandings(newStandings);
+        setDynamicStandings(newDynamicStandings);
 
         // Goal Tracking Logic
         const newAlerts: any[] = [];
@@ -249,6 +267,13 @@ function App() {
 
       } catch (err) {
         console.error("Pipeline Error:", err);
+        // Show the error briefly as an alert locally for easier debugging
+        setAlerts(prev => [...prev, {
+          id: Date.now(),
+          matchName: "System Error",
+          message: String(err),
+          minute: "!"
+        }]);
       }
     };
 
@@ -271,9 +296,9 @@ function App() {
       if (m.status !== 'FINISHED') return false;
       if (resultFilter) {
         const search = resultFilter.toLowerCase();
-        return (m.homeTeam?.name || m.homeTeam || '').toString().toLowerCase().includes(search) || 
-               (m.awayTeam?.name || m.awayTeam || '').toString().toLowerCase().includes(search) || 
-               (m.competition || '').toString().toLowerCase().includes(search);
+        return (m.homeTeam?.name || m.homeTeam || '').toString().toLowerCase().includes(search) ||
+          (m.awayTeam?.name || m.awayTeam || '').toString().toLowerCase().includes(search) ||
+          (m.competition || '').toString().toLowerCase().includes(search);
       }
       return true;
     }
@@ -373,9 +398,9 @@ function App() {
                       ).values()
                     ).map((team: any) => {
                       const teamName = typeof team === 'object' ? team.name : team;
-                      const teamCode = typeof team === 'object' ? team.code : team?.substring(0,3).toUpperCase();
+                      const teamCode = typeof team === 'object' ? team.code : team?.substring(0, 3).toUpperCase();
                       const teamLogo = typeof team === 'object' ? team.logo : '⚽';
-                      
+
                       return (
                         <button
                           key={teamName || Math.random().toString()}
@@ -434,7 +459,21 @@ function App() {
 
           <div className="lg:col-span-8 xl:col-span-9 flex flex-col gap-6" id="ai-analysis-section">
             {activeTab === 'STANDINGS' ? (
-              <StandingsGrid standings={standings} />
+              <div className="flex flex-col gap-4">
+                {/* Tournament Selector Pills */}
+                <div className="flex items-center gap-2 overflow-x-auto pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                  {Object.keys(dynamicStandings).map(comp => (
+                    <button
+                      key={comp}
+                      onClick={() => setSelectedTournament(comp)}
+                      className={`shrink-0 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${selectedTournament === comp ? 'bg-indigo-600 text-white border-indigo-500 shadow-[0_0_15px_rgba(79,70,229,0.3)]' : 'bg-[#0B1121] text-slate-400 border-white/5 hover:bg-white/5'}`}
+                    >
+                      {comp}
+                    </button>
+                  ))}
+                </div>
+                <StandingsGrid standings={dynamicStandings[selectedTournament] || []} />
+              </div>
             ) : activeTab === 'TEAMS' && selectedTeam ? (
               <div className="flex flex-col gap-6">
                 <div className="bg-[#0B1121] border border-white/5 rounded-2xl p-6 relative overflow-hidden shadow-2xl">

@@ -32,6 +32,10 @@ export default function FanPoll() {
         try {
             const res = await fetch('/api/poll');
             const data = await res.json();
+            if (!Array.isArray(data)) {
+                setLoading(false);
+                return;
+            }
             setPollData(data);
             setTotalVotes(data.reduce((acc: number, curr: PollData) => acc + curr.votes, 0));
             setLoading(false);
