@@ -290,15 +290,22 @@ function App() {
 
   // SOFASCORE STYLE TAB FILTERING
   const filteredMatches = matches.filter((m) => {
+    if (!m) return false; // Guard against null matches
     if (activeTab === 'LIVE') return m.status === 'LIVE';
     if (activeTab === 'UPCOMING') return m.status === 'UPCOMING';
     if (activeTab === 'FINISHED') {
       if (m.status !== 'FINISHED') return false;
       if (resultFilter) {
         const search = resultFilter.toLowerCase();
-        return (m.homeTeam?.name || m.homeTeam || '').toString().toLowerCase().includes(search) ||
-          (m.awayTeam?.name || m.awayTeam || '').toString().toLowerCase().includes(search) ||
-          (m.competition || '').toString().toLowerCase().includes(search);
+        
+        // Bulletproof string extraction
+        const homeName = typeof m.homeTeam === 'object' ? (m.homeTeam?.name || '') : String(m.homeTeam || '');
+        const awayName = typeof m.awayTeam === 'object' ? (m.awayTeam?.name || '') : String(m.awayTeam || '');
+        const compName = String(m.competition || '');
+
+        return homeName.toLowerCase().includes(search) ||
+               awayName.toLowerCase().includes(search) ||
+               compName.toLowerCase().includes(search);
       }
       return true;
     }
@@ -462,7 +469,7 @@ function App() {
               <div className="flex flex-col gap-4">
                 {/* Tournament Selector Pills */}
                 <div className="flex items-center gap-2 overflow-x-auto pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                  {Object.keys(dynamicStandings).map(comp => (
+                  {Object.keys(dynamicStandings || {}).map(comp => (
                     <button
                       key={comp}
                       onClick={() => setSelectedTournament(comp)}
