@@ -26,6 +26,36 @@ function getGeminiClients(): GoogleGenAI[] {
   return keys.map(key => new GoogleGenAI({ apiKey: key }));
 }
 
+// --- YOUTUBE AUTOMATION LOGIC ---
+async function fetchAndSaveHighlight(matchId: string, homeTeamName: string, awayTeamName: string) {
+  const ytKey = process.env.YOUTUBE_API_KEY;
+  if (!ytKey) {
+    console.warn("YouTube API Key missing.");
+    return null;
+  }
+
+  // Highly specific search query to avoid garbage results
+  const searchQuery = `official highlights ${homeTeamName} vs ${awayTeamName} FIFA World Cup 2026`;
+  const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=1&q=${encodeURIComponent(searchQuery)}&type=video&key=${ytKey}`;
+
+  try {
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (data.items && data.items.length > 0) {
+      const videoId = data.items[0].id.videoId;
+      const client = await pool.connect();
+      await client.query('UPDATE world_cup_matches SET youtube_highlight_id = $1 WHERE id = $2', [videoId, matchId]);
+      client.release();
+      console.log(`Saved YouTube ID ${videoId} for match ${matchId}`);
+      return videoId;
+    }
+  } catch (error) {
+    console.error("YouTube Fetch Error:", error);
+  }
+  return null;
+}
+
 let matchCache: { data: any; timestamp: number } | null = null;
 const CACHE_DURATION = 5 * 60 * 1000;
 
@@ -41,16 +71,26 @@ app.get('/api/db-matches', async (_req, res) => {
     );
     client.release();
 
-    const dynamicMatches = result.rows.map(row => {
+    // We will use Promise.all to fetch missing videos in parallel
+    const dynamicMatches = await Promise.all(result.rows.map(async (row) => {
       const homeTeamName = typeof row.home_team === 'string' ? row.home_team : row.home_team?.name || 'Home';
       const awayTeamName = typeof row.away_team === 'string' ? row.away_team : row.away_team?.name || 'Away';
+
+      const isFinished = row.match_time === 'FT';
+      let ytId = row.youtube_highlight_id;
+
+      // 🚨 THE AUTOMATION TRIGGER: If it's finished but has no video, fetch it!
+      if (isFinished && !ytId && process.env.YOUTUBE_API_KEY) {
+        fetchAndSaveHighlight(row.id, homeTeamName, awayTeamName).catch(console.error);
+      }
 
       return {
         id: row.id,
         competition: row.competition || 'FIFA World Cup 2026',
-        dbStatus: row.match_time === 'FT' ? 'FINISHED' : 'SCHEDULED', // Send what the database says
+        dbStatus: isFinished ? 'FINISHED' : 'SCHEDULED', // Send what the database says
         time: row.match_time,
         date: new Date(row.match_date).toISOString().split('T')[0],
+        youtubeHighlightId: ytId || null,
         homeTeam: {
           id: row.home_team_id || homeTeamName.toLowerCase().replace(/\s/g, '-'),
           name: homeTeamName,
@@ -79,7 +119,7 @@ app.get('/api/db-matches', async (_req, res) => {
         events: [],
         h2h: { matchesPlayed: 5, homeWins: 2, awayWins: 1, draws: 2, lastResults: ['W', 'D', 'L', 'W', 'D'] }
       };
-    });
+    }));
 
     res.status(200).set(corsHeaders).json({ matches: dynamicMatches });
   } catch (error: any) {

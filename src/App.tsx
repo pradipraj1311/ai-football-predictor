@@ -12,7 +12,7 @@ import { H2HMatrix } from './components/H2HMatrix';
 import { PrivacyPolicy } from './components/PrivacyPolicy';
 import { TermsOfService } from './components/TermsOfService';
 import { GLOBAL_TEAMS_DIRECTORY, WORLD_CUP_STANDINGS, FootballTeamProfile } from './data';
-import { BrainCircuit, Shield, Calendar, History, Globe, Coins, CloudRain, Thermometer, BellRing, Target, ListOrdered, Activity, Trophy } from 'lucide-react';
+import { BrainCircuit, Shield, Calendar, History, Globe, Coins, CloudRain, Thermometer, BellRing, Target, ListOrdered, Activity, Trophy, Play } from 'lucide-react';
 
 function App() {
 
@@ -534,6 +534,27 @@ function App() {
                     <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest"><Thermometer className="w-3.5 h-3.5 text-red-400" /> Temp: 24°C (Optimal)</div>
                   </div>
                 </div>
+
+                {/* --- NEW: USER-FRIENDLY YOUTUBE HIGHLIGHTS --- */}
+                {(selectedMatch as any).youtubeHighlightId && selectedMatch.status === 'FINISHED' && (
+                  <div className="bg-[#0B1121] border border-white/5 rounded-2xl flex flex-col overflow-hidden shadow-2xl mt-6 animate-fade-in-up">
+                    <div className="bg-gradient-to-r from-red-900/20 to-transparent p-4 border-b border-white/5 flex items-center gap-2">
+                      <Play className="w-4 h-4 text-red-500" />
+                      <h3 className="text-sm font-black text-white uppercase tracking-wider">Official Highlights</h3>
+                    </div>
+                    <div className="aspect-video w-full bg-black relative">
+                      <iframe
+                        className="absolute top-0 left-0 w-full h-full"
+                        src={`https://www.youtube.com/embed/${(selectedMatch as any).youtubeHighlightId}?autoplay=0&rel=0&modestbranding=1`}
+                        title="Match Highlights"
+                        frameBorder="0"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                      ></iframe>
+                    </div>
+                  </div>
+                )}
+
                 <AIPredictor match={selectedMatch} />
                 {(selectedMatch.status === 'LIVE' || selectedMatch.status === 'FINISHED') && (
                   <>
