@@ -33,6 +33,7 @@ export interface Match {
   date: string;
   homeScore?: number;
   awayScore?: number;
+  youtubeHighlightId?: string | null;
   stats?: MatchStats;
   events?: MatchEvent[];
   competition: string;

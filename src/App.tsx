@@ -132,6 +132,16 @@ function App() {
           liveMatches = liveData.matches || [];
         }
 
+        // Preserve highlight IDs from the DB for finished matches that also appear in the live feed
+        const dbMatchById = new Map((dbMatches as any[]).map((m: any) => [m.id, m]));
+        liveMatches = liveMatches.map((liveMatch: any) => {
+          const dbMatch = dbMatchById.get(liveMatch.id);
+          if (dbMatch?.youtubeHighlightId) {
+            return { ...liveMatch, youtubeHighlightId: dbMatch.youtubeHighlightId };
+          }
+          return liveMatch;
+        });
+
         // --- NEW: Preserve finished matches from live API ---
         liveMatches.forEach((m: Match) => {
           if (m.status === 'FINISHED') {
@@ -175,19 +185,19 @@ function App() {
 
           const homeScore = Number(m.homeScore) || 0;
           const awayScore = Number(m.awayScore) || 0;
-          
+
           const homeNameStr = typeof m.homeTeam === 'object' ? (m.homeTeam?.name || 'Home') : String(m.homeTeam || 'Home');
           const awayNameStr = typeof m.awayTeam === 'object' ? (m.awayTeam?.name || 'Away') : String(m.awayTeam || 'Away');
-          const homeCode = typeof m.homeTeam === 'object' ? m.homeTeam?.code : homeNameStr.substring(0,3).toUpperCase();
-          const awayCode = typeof m.awayTeam === 'object' ? m.awayTeam?.code : awayNameStr.substring(0,3).toUpperCase();
+          const homeCode = typeof m.homeTeam === 'object' ? m.homeTeam?.code : homeNameStr.substring(0, 3).toUpperCase();
+          const awayCode = typeof m.awayTeam === 'object' ? m.awayTeam?.code : awayNameStr.substring(0, 3).toUpperCase();
           const homeLogo = typeof m.homeTeam === 'object' ? m.homeTeam?.logo : '⚽';
           const awayLogo = typeof m.awayTeam === 'object' ? m.awayTeam?.logo : '⚽';
 
           const findOrCreateTeam = (teamName: string, code: string, logo: string) => {
             let foundTeam: any = null;
             newDynamicStandings[comp].forEach(group => {
-              const t = group.entries.find((e: any) => 
-                e.teamName.toLowerCase().includes(teamName.toLowerCase()) || 
+              const t = group.entries.find((e: any) =>
+                e.teamName.toLowerCase().includes(teamName.toLowerCase()) ||
                 teamName.toLowerCase().includes(e.teamName.toLowerCase())
               );
               if (t) foundTeam = t;
@@ -297,15 +307,15 @@ function App() {
       if (m.status !== 'FINISHED') return false;
       if (resultFilter) {
         const search = resultFilter.toLowerCase();
-        
+
         // Bulletproof string extraction
         const homeName = typeof m.homeTeam === 'object' ? (m.homeTeam?.name || '') : String(m.homeTeam || '');
         const awayName = typeof m.awayTeam === 'object' ? (m.awayTeam?.name || '') : String(m.awayTeam || '');
         const compName = String(m.competition || '');
 
         return homeName.toLowerCase().includes(search) ||
-               awayName.toLowerCase().includes(search) ||
-               compName.toLowerCase().includes(search);
+          awayName.toLowerCase().includes(search) ||
+          compName.toLowerCase().includes(search);
       }
       return true;
     }
