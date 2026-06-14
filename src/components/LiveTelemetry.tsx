@@ -54,8 +54,8 @@ export const LiveTelemetry: React.FC<{ match: Match }> = ({ match }) => {
           </div>
 
           <div className="flex justify-between text-[9px] font-mono font-bold text-slate-500 mt-3 uppercase tracking-wider">
-            <span className="text-emerald-500/70">{match.homeTeam.name} Pressure</span>
-            <span className="text-blue-500/70">{match.awayTeam.name} Pressure</span>
+            <span className="text-emerald-500/70">{match.homeTeam?.name || 'Home'} Pressure</span>
+            <span className="text-blue-500/70">{match.awayTeam?.name || 'Away'} Pressure</span>
           </div>
         </div>
 
@@ -105,7 +105,7 @@ export const LiveTelemetry: React.FC<{ match: Match }> = ({ match }) => {
           </div>
         </div>
       </div>
-         
+
     </div>
   );
 };

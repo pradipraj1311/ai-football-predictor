@@ -12,11 +12,10 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, isSelected, onSelec
   return (
     <div
       onClick={onSelect}
-      className={`group cursor-pointer transition-all duration-200 rounded-xl border p-3.5 relative overflow-hidden ${
-        isSelected
+      className={`group cursor-pointer transition-all duration-200 rounded-xl border p-3.5 relative overflow-hidden ${isSelected
           ? 'bg-gradient-to-r from-indigo-950/40 to-[#0B1121] border-indigo-500/50 shadow-lg shadow-indigo-900/20'
           : 'bg-[#0B1121] border-white/5 hover:border-indigo-500/30'
-      }`}
+        }`}
     >
       {/* AI Indicator Tab */}
       {isSelected && (
@@ -37,17 +36,17 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, isSelected, onSelec
         {/* Home Team Row */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="text-xl">{match.homeTeam.logo}</span>
-            <span className={`text-sm font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>{match.homeTeam.name}</span>
+            <span className="text-xl">{match.homeTeam?.logo || '⚽'}</span>
+            <span className={`text-sm font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>{match.homeTeam?.name || 'Home'}</span>
           </div>
           <span className="text-base font-black text-white font-mono">{match.homeScore ?? '-'}</span>
         </div>
-        
+
         {/* Away Team Row */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="text-xl">{match.awayTeam.logo}</span>
-            <span className={`text-sm font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>{match.awayTeam.name}</span>
+            <span className="text-xl">{match.awayTeam?.logo || '⚽'}</span>
+            <span className={`text-sm font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>{match.awayTeam?.name || 'Away'}</span>
           </div>
           <span className="text-base font-black text-white font-mono">{match.awayScore ?? '-'}</span>
         </div>
