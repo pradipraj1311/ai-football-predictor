@@ -338,7 +338,7 @@ function App() {
             </div>
             <div>
               <h1 className="text-xl font-black text-white tracking-tight leading-none">E2match<span className="text-indigo-400">.ai</span></h1>
-              <p className="text-[10px] text-slate-400 font-mono uppercase tracking-widest mt-1">Live Intelligence</p>
+              <p className="text-[10px] text-slate-400 font-mono uppercase tracking-widest mt-1">Live match insights for every game</p>
             </div>
           </a>
 
@@ -380,7 +380,7 @@ function App() {
                 <div className="mb-4 shrink-0 animate-fade-in-up flex flex-col gap-3">
                   <input
                     type="text"
-                    placeholder="Search results by team or competition..."
+                    placeholder="Search finished matches, teams, or competitions"
                     value={resultFilter}
                     onChange={(e) => setResultFilter(e.target.value)}
                     className="w-full bg-[#0B1121] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500/50 transition-colors shadow-inner"
@@ -440,7 +440,7 @@ function App() {
               ) : activeTab !== 'TEAMS' ? (
                 filteredMatches.length === 0 ? (
                   <div className="text-xs text-slate-500 text-center p-8 bg-[#0B1121] rounded-xl border border-white/5 flex flex-col items-center gap-2">
-                    <span className="text-2xl">⚽</span><span className="font-bold">No Matches Right Now.</span>
+                    <span className="text-2xl">⚽</span><span className="font-bold">No matches here yet.</span>
                   </div>
                 ) : (
                   filteredMatches.map((match, index) => (
@@ -550,7 +550,7 @@ function App() {
                   <div className="bg-[#0B1121] border border-white/5 rounded-2xl flex flex-col overflow-hidden shadow-2xl mt-6 animate-fade-in-up">
                     <div className="bg-gradient-to-r from-red-900/20 to-transparent p-4 border-b border-white/5 flex items-center gap-2">
                       <Play className="w-4 h-4 text-red-500" />
-                      <h3 className="text-sm font-black text-white uppercase tracking-wider">Official Highlights</h3>
+                      <h3 className="text-sm font-black text-white uppercase tracking-wider">Match highlights</h3>
                     </div>
                     <div className="aspect-video w-full bg-black relative">
                       <iframe
@@ -562,6 +562,12 @@ function App() {
                         allowFullScreen
                       ></iframe>
                     </div>
+                  </div>
+                )}
+
+                {selectedMatch.status === 'FINISHED' && !(selectedMatch as any).youtubeHighlightId && (
+                  <div className="bg-[#0B1121] border border-white/5 rounded-2xl p-4 text-slate-300 text-sm mt-6">
+                    We’re still checking for match highlights. If the game just finished, please refresh in a moment while we find the latest YouTube clip.
                   </div>
                 )}
 
@@ -577,7 +583,7 @@ function App() {
               <div className="text-center mt-20 text-slate-500">
                 <Globe className="w-16 h-16 text-indigo-500/20 mx-auto mb-4 animate-[spin_10s_linear_infinite]" />
                 <h2 className="text-3xl font-black text-white mb-2">FIFA World Cup 2026™</h2>
-                <span className="text-xs font-black text-indigo-400 bg-indigo-500/10 px-3 py-1 rounded-full uppercase tracking-widest border border-indigo-500/20 mb-6 inline-block">System Info: {userLocation} ({sportName})</span>
+                <span className="text-xs font-black text-indigo-400 bg-indigo-500/10 px-3 py-1 rounded-full uppercase tracking-widest border border-indigo-500/20 mb-6 inline-block">Watching from {userLocation} ({sportName})</span>
               </div>
             )}
 

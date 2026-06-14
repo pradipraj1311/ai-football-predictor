@@ -42,12 +42,28 @@ async function fetchAndSaveHighlight(matchId: string, homeTeamName: string, away
     const response = await fetch(url);
     const data = await response.json();
 
-    if (data.items && data.items.length > 0) {
-      const videoId = data.items[0].id.videoId;
+    const items = Array.isArray(data.items) ? data.items.filter((item: any) => item.id?.videoId) : [];
+    if (items.length > 0) {
+      const videoId = items[0].id.videoId;
       const client = await pool.connect();
       await client.query('UPDATE world_cup_matches SET youtube_highlight_id = $1 WHERE id = $2', [videoId, matchId]);
       client.release();
       console.log(`Saved YouTube ID ${videoId} for match ${matchId}`);
+      return videoId;
+    }
+
+    // Fallback search if the first query doesn't return a valid result
+    const fallbackQuery = `${homeTeamName} vs ${awayTeamName} FIFA World Cup 2026 highlights`;
+    const fallbackUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=1&q=${encodeURIComponent(fallbackQuery)}&type=video&key=${ytKey}&videoDuration=short`;
+    const fallbackResponse = await fetch(fallbackUrl);
+    const fallbackData = await fallbackResponse.json();
+    const fallbackItems = Array.isArray(fallbackData.items) ? fallbackData.items.filter((item: any) => item.id?.videoId) : [];
+    if (fallbackItems.length > 0) {
+      const videoId = fallbackItems[0].id.videoId;
+      const client = await pool.connect();
+      await client.query('UPDATE world_cup_matches SET youtube_highlight_id = $1 WHERE id = $2', [videoId, matchId]);
+      client.release();
+      console.log(`Saved YouTube ID ${videoId} for match ${matchId} using fallback search`);
       return videoId;
     }
   } catch (error) {

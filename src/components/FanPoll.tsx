@@ -14,6 +14,7 @@ export default function FanPoll() {
     const [hasVoted, setHasVoted] = useState<boolean>(false);
     const [totalVotes, setTotalVotes] = useState<number>(0);
     const [loading, setLoading] = useState<boolean>(true);
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         // Safely check local storage (prevents crashes in strict WebViews)
@@ -31,8 +32,12 @@ export default function FanPoll() {
     const fetchPollData = async () => {
         try {
             const res = await fetch('/api/poll');
+            if (!res.ok) {
+                throw new Error(`Server responded with ${res.status}`);
+            }
             const data = await res.json();
             if (!Array.isArray(data)) {
+                setError('We can’t show the poll right now. Please try again soon.');
                 setLoading(false);
                 return;
             }
@@ -41,6 +46,7 @@ export default function FanPoll() {
             setLoading(false);
         } catch (err) {
             console.error("Poll fetch error", err);
+            setError('Unable to load fan poll data right now. Please refresh in a moment.');
             setLoading(false);
         }
     };
@@ -79,13 +85,13 @@ export default function FanPoll() {
 
     return (
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 w-full">
-            <h3 className="text-white font-bold text-lg mb-1">Whose Fan Are You? 🏆</h3>
-            <p className="text-slate-400 text-sm mb-4">Search and vote for your World Cup 2026 favorite team!</p>
+            <h3 className="text-white font-bold text-lg mb-1">Pick your favorite team!</h3>
+            <p className="text-slate-400 text-sm mb-4">Search the list, cast your vote, and see who’s leading the fan rankings.</p>
 
             <div className="relative mb-4">
                 <input
                     type="text"
-                    placeholder="Search country..."
+                    placeholder="Search for your team..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full bg-slate-800 text-white placeholder-slate-400 text-sm rounded-lg pl-10 pr-4 py-2 border border-slate-700 focus:outline-none focus:border-indigo-500"
@@ -128,7 +134,7 @@ export default function FanPoll() {
                     );
                 })}
                 {filteredTeams.length === 0 && (
-                    <p className="text-slate-400 text-sm text-center py-4">No teams found.</p>
+                    <p className="text-slate-400 text-sm text-center py-4">{error || 'No teams match that search.'}</p>
                 )}
             </div>
 
