@@ -401,11 +401,6 @@ app.get('/sitemap.xml', (_req, res) => {
   res.status(200).send(xml);
 });
 
-app.get('/robots.txt', (_req, res) => {
-  res.setHeader('Content-Type', 'text/plain');
-  res.status(200).send("User-agent: *\nAllow: /\n\nSitemap: https://e2match.vercel.app/sitemap.xml");
-});
-
 if (process.env.NODE_ENV !== 'production') {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`API Server running on port ${PORT}`);

@@ -19,14 +19,6 @@
       "dest": "/server.ts"
     },
     {
-      "src": "/sitemap.xml",
-      "dest": "/server.ts"
-    },
-    {
-      "src": "/robots.txt",
-      "dest": "/server.ts"
-    },
-    {
       "src": "/.well-known/(.*)",
       "dest": "/.well-known/$1"
     },
