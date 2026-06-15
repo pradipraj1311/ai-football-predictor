@@ -431,9 +431,15 @@ app.post('/api/predict', async (req, res) => {
 
 // --- BRUTE FORCE SEO ROUTES ---
 
+app.get('/robots.txt', (_req, res) => {
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.status(200).send(`User-agent: *\nAllow: /\nSitemap: https://e2match.vercel.app/sitemap.xml\n`);
+});
+
 app.get('/sitemap.xml', (_req, res) => {
-  res.setHeader('Content-Type', 'text/xml; charset=utf-8');
-  res.setHeader('Cache-Control', 's-maxage=86400');
+  res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=86400');
 
   const today = new Date().toISOString().split('T')[0];
 
