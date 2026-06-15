@@ -530,7 +530,8 @@ function App() {
                         />
                       </div>
                     ))
-                  )
+                  )}
+                </>
               ) : (
                 GLOBAL_TEAMS_DIRECTORY.map((team, index) => (
                   <div key={team.id} onClick={() => setSelectedTeam(team)} className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all animate-fade-in-up ${selectedTeam?.id === team.id ? 'bg-gradient-to-r from-indigo-950/40 to-[#0B1121] border-indigo-500/50' : 'bg-[#0B1121] border-white/5 hover:border-indigo-500/30'}`} style={{ animationDelay: `${index * 30}ms` }}>
