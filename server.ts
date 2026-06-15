@@ -45,10 +45,24 @@ async function fetchAndSaveHighlight(matchId: string, homeTeamName: string, away
     const items = Array.isArray(data.items) ? data.items.filter((item: any) => item.id?.videoId) : [];
     if (items.length > 0) {
       const videoId = items[0].id.videoId;
-      const client = await pool.connect();
-      await client.query('UPDATE world_cup_matches SET youtube_highlight_id = $1 WHERE id = $2', [videoId, matchId]);
-      client.release();
-      console.log(`Saved YouTube ID ${videoId} for match ${matchId}`);
+      // Try to persist the highlight id, but tolerate schema or connectivity issues
+      let client: any = null;
+      try {
+        client = await pool.connect();
+        await client.query('UPDATE world_cup_matches SET youtube_highlight_id = $1 WHERE id = $2', [videoId, matchId]);
+        console.log(`Saved YouTube ID ${videoId} for match ${matchId}`);
+      } catch (err: any) {
+        // If the column doesn't exist, PG returns code 42703. We surface the video id
+        // to the caller so the UI can show the highlight immediately even if DB
+        // schema/update failed in production.
+        if (err && err.code === '42703') {
+          console.warn('YouTube column missing in DB (youtube_highlight_id). Returning video id without persisting.');
+        } else {
+          console.error('Failed to save YouTube ID to DB:', err?.message || err);
+        }
+      } finally {
+        try { if (client) client.release(); } catch (e) { /* ignore */ }
+      }
       return videoId;
     }
 
@@ -60,10 +74,20 @@ async function fetchAndSaveHighlight(matchId: string, homeTeamName: string, away
     const fallbackItems = Array.isArray(fallbackData.items) ? fallbackData.items.filter((item: any) => item.id?.videoId) : [];
     if (fallbackItems.length > 0) {
       const videoId = fallbackItems[0].id.videoId;
-      const client = await pool.connect();
-      await client.query('UPDATE world_cup_matches SET youtube_highlight_id = $1 WHERE id = $2', [videoId, matchId]);
-      client.release();
-      console.log(`Saved YouTube ID ${videoId} for match ${matchId} using fallback search`);
+      let client: any = null;
+      try {
+        client = await pool.connect();
+        await client.query('UPDATE world_cup_matches SET youtube_highlight_id = $1 WHERE id = $2', [videoId, matchId]);
+        console.log(`Saved YouTube ID ${videoId} for match ${matchId} using fallback search`);
+      } catch (err: any) {
+        if (err && err.code === '42703') {
+          console.warn('YouTube column missing in DB (youtube_highlight_id). Returning video id without persisting.');
+        } else {
+          console.error('Failed to save YouTube ID to DB (fallback):', err?.message || err);
+        }
+      } finally {
+        try { if (client) client.release(); } catch (e) { /* ignore */ }
+      }
       return videoId;
     }
   } catch (error) {
@@ -80,6 +104,12 @@ app.get('/api/db-matches', async (_req, res) => {
     'Access-Control-Allow-Origin': '*',
     'Content-Type': 'application/json'
   };
+  // If DB is not configured, return empty matches quickly to avoid repeated timeouts
+  if (!process.env.DB_URL) {
+    console.warn('DB_URL not set. Returning empty matches.');
+    return res.status(200).set(corsHeaders).json({ matches: [], warning: 'DB not configured' });
+  }
+
   try {
     const client = await pool.connect();
     const result = await client.query(
