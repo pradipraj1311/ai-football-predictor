@@ -654,18 +654,16 @@ function App() {
                       </a>
                     </div>
                     <div className="p-5 flex justify-center">
-                       <div className="rounded-2xl overflow-hidden border border-white/10 w-full max-w-3xl aspect-video bg-black/50 flex flex-col items-center justify-center text-center p-6 relative">
-                          <Youtube className="w-16 h-16 text-red-500/50 mb-4" />
-                          <h4 className="text-white font-bold mb-2">Video playback restricted by content owner</h4>
-                          <p className="text-sm text-slate-400 mb-6 max-w-md">Official broadcasters require these highlights to be viewed directly on YouTube. Click the button above to watch the full HD match highlights.</p>
-                          <a
-                            href={`https://www.youtube.com/watch?v=${(selectedMatch as any).youtubeHighlightId}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="absolute inset-0 z-10"
-                            aria-label="Watch on YouTube"
-                          ></a>
-                       </div>
+                      <div className="w-full max-w-3xl aspect-video rounded-2xl overflow-hidden border border-white/10 shadow-lg relative bg-black/50">
+                        <iframe
+                          src={`https://www.youtube.com/embed/${(selectedMatch as any).youtubeHighlightId}`}
+                          title="YouTube match highlight player"
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                          referrerPolicy="strict-origin-when-cross-origin"
+                          allowFullScreen
+                          className="w-full h-full absolute inset-0 border-0"
+                        ></iframe>
+                      </div>
                     </div>
                   </div>
                 )}
