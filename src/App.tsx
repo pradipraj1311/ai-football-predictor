@@ -298,7 +298,7 @@ function App() {
 
         if (newAlerts.length > 0) {
           setAlerts(prev => [...prev, ...newAlerts]);
-          setTimeout(() => setAlerts(prev => prev.filter(a => !newAlerts.map(n => n.id).includes(a.id))), 6000);
+          setTimeout(() => setAlerts(prev => prev.filter(a => !newAlerts.map(n => n.id).includes(a.id))), 4000);
         }
 
         previousMatchesRef.current = liveMatches;
@@ -334,7 +334,7 @@ function App() {
   const triggerTestGoal = () => {
     const testAlert = { id: Date.now(), matchName: "ARG v BRA", message: "GOAL! Argentina [1] - 0 Brazil", minute: 42 };
     setAlerts(prev => [...prev, testAlert]);
-    setTimeout(() => setAlerts(prev => prev.filter(a => a.id !== testAlert.id)), 6000);
+    setTimeout(() => setAlerts(prev => prev.filter(a => a.id !== testAlert.id)), 4000);
   };
 
   // SOFASCORE STYLE TAB FILTERING
