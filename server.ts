@@ -35,7 +35,7 @@ async function fetchAndSaveHighlight(matchId: string, homeTeamName: string, away
   }
 
   // Highly specific search query to avoid garbage results
-  const searchQuery = `official highlights ${homeTeamName} vs ${awayTeamName} FIFA World Cup 2026`;
+  const searchQuery = `FIFA official highlights ${homeTeamName} vs ${awayTeamName} World Cup 2026`;
   const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=1&q=${encodeURIComponent(searchQuery)}&type=video&key=${ytKey}`;
 
   try {
@@ -53,7 +53,7 @@ async function fetchAndSaveHighlight(matchId: string, homeTeamName: string, away
     }
 
     // Fallback search if the first query doesn't return a valid result
-    const fallbackQuery = `${homeTeamName} vs ${awayTeamName} FIFA World Cup 2026 highlights`;
+    const fallbackQuery = `FIFA TV highlights ${homeTeamName} vs ${awayTeamName} 2026`;
     const fallbackUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=1&q=${encodeURIComponent(fallbackQuery)}&type=video&key=${ytKey}&videoDuration=short`;
     const fallbackResponse = await fetch(fallbackUrl);
     const fallbackData = await fallbackResponse.json();
@@ -92,12 +92,14 @@ app.get('/api/db-matches', async (_req, res) => {
       const homeTeamName = typeof row.home_team === 'string' ? row.home_team : row.home_team?.name || 'Home';
       const awayTeamName = typeof row.away_team === 'string' ? row.away_team : row.away_team?.name || 'Away';
 
-      const isFinished = row.match_time === 'FT';
+      const rawMatchTime = typeof row.match_time === 'string' ? row.match_time.toUpperCase() : '';
+      const isFinished = rawMatchTime.includes('FT') || row.db_status === 'FINISHED' || row.dbStatus === 'FINISHED' || row.match_status === 'FINISHED';
       let ytId = row.youtube_highlight_id;
 
-      // 🚨 THE AUTOMATION TRIGGER: If it's finished but has no video, fetch it!
+      // 🚨 THE AUTOMATION TRIGGER: If it's finished but has no video, fetch it synchronously for immediate availability
       if (isFinished && !ytId && process.env.YOUTUBE_API_KEY) {
-        fetchAndSaveHighlight(row.id, homeTeamName, awayTeamName).catch(console.error);
+        const fetchedId = await fetchAndSaveHighlight(row.id, homeTeamName, awayTeamName);
+        if (fetchedId) ytId = fetchedId;
       }
 
       return {
@@ -169,13 +171,41 @@ app.get('/api/live-matches', async (_req, res) => {
     }
   };
 
+  const extractScore = (score: any) => {
+    if (score == null) return undefined;
+    if (typeof score === 'number') return score;
+    if (typeof score === 'string') return parseInt(score.replace(/\D/g, ''), 10) || 0;
+    if (typeof score === 'object') {
+      return score.current ?? score.display ?? score.normal ?? score.total ?? score.value ?? 0;
+    }
+    return undefined;
+  };
+
+  const normalizeCompetitionName = (rawName: any) => {
+    if (!rawName) return 'Global Football';
+    const name = String(rawName).trim();
+    const lower = name.toLowerCase();
+    if (lower.includes('world cup')) return 'FIFA World Cup 2026';
+    if (lower.includes('champions league')) return 'UEFA Champions League';
+    if (lower.includes('euros') || lower.includes('european championship')) return 'UEFA European Championship';
+    return name;
+  };
+
+  const normalizeStatusName = (status: any) => {
+    const statusText = String(status || '').toLowerCase();
+    if (/finished|full time|final|ft|ended|closed|aet|after penalties|penalties|pen|match ended/.test(statusText)) return 'FINISHED';
+    if (/in progress|inprogress|live|1st half|2nd half|first half|second half|half time|halftime|extra time|et|playing|ongoing|period/.test(statusText)) return 'LIVE';
+    if (/postponed|cancelled|cancelled|delayed|abandoned|suspended/.test(statusText)) return 'POSTPONED';
+    return 'UPCOMING';
+  };
+
   try {
     const sofaResponse = await fetch(sofaUrl, sofaOptions);
     if (!sofaResponse.ok) throw new Error(`API Error: Status ${sofaResponse.status}`);
     const rawData = await sofaResponse.json();
 
     // RapidAPI ના ડેટાને એક્સટ્રેક્ટ કરો
-    const liveEvents = rawData.events || rawData.data || rawData || [];
+    const liveEvents = rawData.events || rawData.data?.events || rawData.data || rawData || [];
 
     const footballEvents = Array.isArray(liveEvents) ? liveEvents.filter((event: any) =>
       event.tournament?.category?.sport?.name?.toLowerCase() === 'football' ||
@@ -190,31 +220,32 @@ app.get('/api/live-matches', async (_req, res) => {
     }
 
     const processedMatches = footballEvents.slice(0, 15).map((event: any) => {
-      const minuteStr = event.status?.description || "45";
-      const parsedMinute = parseInt(minuteStr.replace(/\D/g, '')) || 45;
+      const minuteStr = event.status?.description || event.status?.text || event.status?.name || '45';
+      const parsedMinute = parseInt(String(minuteStr).replace(/\D/g, ''), 10) || 45;
 
-      const statusType = event.status?.type?.toLowerCase() || '';
-      const statusCode = event.status?.code;
+      const rawStatus = event.status?.type || event.status?.description || event.status?.short || event.status?.name || event.status;
+      const mappedStatus = normalizeStatusName(rawStatus);
 
-      // EXTREME AGGRESSIVE STATUS MAPPING (UPGRADED)
-      let mappedStatus = 'UPCOMING';
-      if (['finished', 'closed', 'ended', 'ft', 'aet', 'pen', 'afterpenalties'].includes(statusType) || statusCode === 100 || statusCode === 120) {
-        mappedStatus = 'FINISHED';
-      } else if (['inprogress', 'live', '1st half', '2nd half', 'halftime', 'extratime'].includes(statusType) || (statusCode && statusCode >= 6 && statusCode <= 50)) {
-        mappedStatus = 'LIVE';
-      } else if (['canceled', 'postponed', 'delayed'].includes(statusType)) {
-        mappedStatus = 'POSTPONED';
-      }
+      const competitionName = normalizeCompetitionName(
+        event.tournament?.name ||
+        event.tournament?.category?.name ||
+        event.competition?.name ||
+        event.league?.name ||
+        event.group ||
+        event.groupName ||
+        event.tournament?.name_long ||
+        'Global Football'
+      );
 
       return {
         id: String(event.id),
-        competition: event.tournament?.name || 'Global Football',
+        competition: competitionName,
         status: mappedStatus,
         minute: mappedStatus === 'LIVE' ? parsedMinute : undefined,
         time: mappedStatus === 'FINISHED' ? 'FT' : (mappedStatus === 'LIVE' ? 'LIVE' : 'TBD'),
         date: new Date().toISOString().split('T')[0],
-        homeScore: event.homeScore?.current ?? event.homeScore?.display ?? 0,
-        awayScore: event.awayScore?.current ?? event.awayScore?.display ?? 0,
+        homeScore: extractScore(event.homeScore),
+        awayScore: extractScore(event.awayScore),
         homeTeam: {
           id: String(event.homeTeam?.id || 'h1'),
           name: event.homeTeam?.name || 'Home Team',

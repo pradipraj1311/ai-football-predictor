@@ -13,8 +13,8 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, isSelected, onSelec
     <div
       onClick={onSelect}
       className={`group cursor-pointer transition-all duration-200 rounded-xl border p-3.5 relative overflow-hidden ${isSelected
-          ? 'bg-gradient-to-r from-indigo-950/40 to-[#0B1121] border-indigo-500/50 shadow-lg shadow-indigo-900/20'
-          : 'bg-[#0B1121] border-white/5 hover:border-indigo-500/30'
+        ? 'bg-gradient-to-r from-indigo-950/40 to-[#0B1121] border-indigo-500/50 shadow-lg shadow-indigo-900/20'
+        : 'bg-[#0B1121] border-white/5 hover:border-indigo-500/30'
         }`}
     >
       {/* AI Indicator Tab */}
@@ -27,9 +27,16 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, isSelected, onSelec
           <BrainCircuit className={`w-3.5 h-3.5 ${isSelected ? 'text-indigo-400' : 'text-slate-600'}`} />
           <span className="text-[10px] font-mono text-slate-400 uppercase">{match.competition}</span>
         </div>
-        <span className={`text-[10px] font-black uppercase tracking-wider ${match.status === 'LIVE' ? 'text-red-500 animate-pulse' : 'text-slate-500'}`}>
-          {match.status === 'LIVE' ? `${match.minute}'` : match.date}
-        </span>
+        <div className="flex items-center gap-2">
+          {match.youtubeHighlightId && (
+            <span className="text-[10px] font-black uppercase tracking-wider text-amber-300 border border-amber-500/20 rounded-full px-2 py-0.5 bg-amber-500/10">
+              HIGHLIGHT
+            </span>
+          )}
+          <span className={`text-[10px] font-black uppercase tracking-wider ${match.status === 'LIVE' ? 'text-red-500 animate-pulse' : 'text-slate-500'}`}>
+            {match.status === 'LIVE' ? `${match.minute}'` : match.date}
+          </span>
+        </div>
       </div>
 
       <div className="flex flex-col gap-2">

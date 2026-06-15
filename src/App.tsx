@@ -32,6 +32,7 @@ function App() {
   const [alerts, setAlerts] = useState<any[]>([]);
   const previousMatchesRef = useRef<Match[]>([]);
   const finishedMatchesRef = useRef<Match[]>([]);
+  const highlightMatchIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     try {
@@ -166,19 +167,55 @@ function App() {
         // State Update
         setMatches(combinedMatches);
 
+        // --- NEW: Highlight discovery for finished matches ---
+        const newHighlightMatches = combinedMatches.filter((m: Match) =>
+          m.status === 'FINISHED' &&
+          m.youtubeHighlightId &&
+          !highlightMatchIdsRef.current.has(m.id)
+        );
+
+        newHighlightMatches.forEach((m) => {
+          highlightMatchIdsRef.current.add(m.id);
+          const matchName = `${typeof m.homeTeam === 'object' ? m.homeTeam.name : m.homeTeam} vs ${typeof m.awayTeam === 'object' ? m.awayTeam.name : m.awayTeam}`;
+          setAlerts(prev => [
+            ...prev,
+            {
+              id: Date.now() + Math.random(),
+              matchName,
+              message: 'New match highlight available! Tap to watch.',
+              minute: 'HIGHLIGHT',
+              onClick: () => {
+                setSelectedMatch(m);
+                setActiveTab('FINISHED');
+                setTimeout(() => document.getElementById('match-highlights')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
+              }
+            }
+          ]);
+        });
+
         // --- NEW: FULLY DYNAMIC TOURNAMENT STANDINGS ENGINE ---
         let newDynamicStandings: Record<string, any[]> = {
           'FIFA World Cup 2026': JSON.parse(JSON.stringify(WORLD_CUP_STANDINGS))
         };
 
-        const validMatchesToCalculate = combinedMatches.filter((m: Match) =>
-          (m.status === 'FINISHED' || m.status === 'LIVE') &&
-          m.homeScore !== undefined &&
-          m.awayScore !== undefined
-        );
+        const normalizeCompetitionName = (compName: string) => {
+          const name = String(compName || '').trim();
+          const lower = name.toLowerCase();
+          if (lower.includes('world cup')) return 'FIFA World Cup 2026';
+          if (lower.includes('champions league')) return 'UEFA Champions League';
+          if (lower.includes('euros') || lower.includes('european championship')) return 'UEFA European Championship';
+          return name || 'Other Competitions';
+        };
+
+        const validMatchesToCalculate = combinedMatches.filter((m: Match) => {
+          const isFinishedMatch = m.status === 'FINISHED' || m.status === 'FT' || m.status === 'ENDED' || m.status === 'CLOSED';
+          return (isFinishedMatch || m.status === 'LIVE') &&
+            m.homeScore !== undefined &&
+            m.awayScore !== undefined;
+        });
 
         validMatchesToCalculate.forEach((m: Match) => {
-          const comp = m.competition || 'Other Competitions';
+          const comp = normalizeCompetitionName(m.competition || 'Other Competitions');
           if (!newDynamicStandings[comp]) {
             newDynamicStandings[comp] = [{ groupName: `${comp} Table`, entries: [] }];
           }
@@ -301,10 +338,11 @@ function App() {
   // SOFASCORE STYLE TAB FILTERING
   const filteredMatches = matches.filter((m) => {
     if (!m) return false; // Guard against null matches
+    const isFinishedStatus = m.status === 'FINISHED' || m.status === 'FT' || m.status === 'ENDED' || m.status === 'CLOSED';
     if (activeTab === 'LIVE') return m.status === 'LIVE';
     if (activeTab === 'UPCOMING') return m.status === 'UPCOMING';
     if (activeTab === 'FINISHED') {
-      if (m.status !== 'FINISHED') return false;
+      if (!isFinishedStatus) return false;
       if (resultFilter) {
         const search = resultFilter.toLowerCase();
 
@@ -547,22 +585,38 @@ function App() {
 
                 {/* --- NEW: USER-FRIENDLY YOUTUBE HIGHLIGHTS --- */}
                 {(selectedMatch as any).youtubeHighlightId && selectedMatch.status === 'FINISHED' && (
-                  <div className="bg-[#0B1121] border border-white/5 rounded-2xl flex flex-col overflow-hidden shadow-2xl mt-6 animate-fade-in-up">
-                    <div className="bg-gradient-to-r from-red-900/20 to-transparent p-4 border-b border-white/5 flex items-center gap-2">
-                      <Play className="w-4 h-4 text-red-500" />
-                      <h3 className="text-sm font-black text-white uppercase tracking-wider">Match highlights</h3>
+                  <>
+                    <div className="bg-amber-500/10 border border-amber-400/20 rounded-2xl p-4 mt-6 text-amber-100 shadow-inner">
+                      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-widest text-amber-300">Official match highlight</p>
+                          <p className="mt-1 text-sm font-bold text-white">A new highlight is ready to watch for this finished result.</p>
+                        </div>
+                        <button
+                          onClick={() => document.getElementById('match-highlights')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                          className="rounded-full bg-amber-400/15 border border-amber-300/30 px-4 py-2 text-xs font-black uppercase tracking-widest text-amber-100 hover:bg-amber-400/20 transition"
+                        >
+                          Go to highlights
+                        </button>
+                      </div>
                     </div>
-                    <div className="aspect-video w-full bg-black relative">
-                      <iframe
-                        className="absolute top-0 left-0 w-full h-full"
-                        src={`https://www.youtube.com/embed/${(selectedMatch as any).youtubeHighlightId}?autoplay=0&rel=0&modestbranding=1`}
-                        title="Match Highlights"
-                        frameBorder="0"
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                        allowFullScreen
-                      ></iframe>
+                    <div id="match-highlights" className="bg-[#0B1121] border border-white/5 rounded-2xl flex flex-col overflow-hidden shadow-2xl mt-4 animate-fade-in-up">
+                      <div className="bg-gradient-to-r from-red-900/20 to-transparent p-4 border-b border-white/5 flex items-center gap-2">
+                        <Play className="w-4 h-4 text-red-500" />
+                        <h3 className="text-sm font-black text-white uppercase tracking-wider">Match highlights</h3>
+                      </div>
+                      <div className="aspect-video w-full bg-black relative">
+                        <iframe
+                          className="absolute top-0 left-0 w-full h-full"
+                          src={`https://www.youtube.com/embed/${(selectedMatch as any).youtubeHighlightId}?autoplay=0&rel=0&modestbranding=1`}
+                          title="Match Highlights"
+                          frameBorder="0"
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                        ></iframe>
+                      </div>
                     </div>
-                  </div>
+                  </>
                 )}
 
                 {selectedMatch.status === 'FINISHED' && !(selectedMatch as any).youtubeHighlightId && (
@@ -606,10 +660,14 @@ function App() {
       {/* TOASTS */}
       <div className="fixed bottom-6 right-6 z-[110] flex flex-col gap-3 pointer-events-none">
         {alerts.map(alert => (
-          <div key={alert.id} className="bg-[#0B1121] border border-emerald-500/50 p-4 rounded-2xl shadow-[0_10px_40px_rgba(16,185,129,0.3)] flex gap-4 items-center animate-slide-in pointer-events-auto">
-            <div className="bg-emerald-500/20 p-2.5 rounded-full border border-emerald-500/30"><Target className="w-6 h-6 text-emerald-400" /></div>
+          <div
+            key={alert.id}
+            onClick={() => alert.onClick?.()}
+            className={`bg-[#0B1121] border ${alert.onClick ? 'border-amber-500/50 cursor-pointer hover:bg-white/5' : 'border-emerald-500/50'} p-4 rounded-2xl shadow-[0_10px_40px_rgba(16,185,129,0.3)] flex gap-4 items-center animate-slide-in pointer-events-auto`}
+          >
+            <div className={`p-2.5 rounded-full ${alert.onClick ? 'bg-amber-500/20 border border-amber-500/30' : 'bg-emerald-500/20 border border-emerald-500/30'}`}><Target className="w-6 h-6 text-amber-400" /></div>
             <div>
-              <span className="text-[10px] text-emerald-400 font-black uppercase tracking-widest block mb-0.5">{alert.matchName} • {alert.minute}'</span>
+              <span className="text-[10px] text-amber-300 font-black uppercase tracking-widest block mb-0.5">{alert.matchName} • {alert.minute}</span>
               <span className="text-sm font-black text-white tracking-wide">{alert.message}</span>
             </div>
           </div>
