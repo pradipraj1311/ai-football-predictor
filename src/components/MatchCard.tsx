@@ -34,7 +34,11 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, isSelected, onSelec
             </span>
           )}
           <span className={`text-[10px] font-black uppercase tracking-wider ${match.status === 'LIVE' ? 'text-red-500 animate-pulse' : 'text-slate-500'}`}>
-            {match.status === 'LIVE' ? `${match.minute}'` : match.date}
+            {match.status === 'LIVE'
+              ? `${match.minute}'`
+              : match.status === 'FINISHED'
+                ? `FT • ${match.date}`
+                : `${match.time && match.time !== 'TBD' ? match.time + ' • ' : ''}${match.date}`}
           </span>
         </div>
       </div>
