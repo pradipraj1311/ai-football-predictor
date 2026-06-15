@@ -128,10 +128,12 @@ function App() {
 
         // 2. Fetch from Live API
         const liveRes = await fetch(`/api/live-matches?t=${Date.now()}`);
-        let liveMatches = [];
+        let liveMatches: any[] = [];
+        let isLiveFetchSuccess = false;
         if (liveRes.ok) {
           const liveData = await liveRes.json();
           liveMatches = liveData.matches || [];
+          isLiveFetchSuccess = !liveData.warning;
         }
 
         // Preserve highlight IDs from the DB for finished matches that also appear in the live feed
@@ -155,6 +157,24 @@ function App() {
             }
           }
         });
+
+        // --- NEW: Handle matches that drop off the live feed ---
+        // Live APIs often remove matches from the "live" feed immediately after they finish.
+        // If a match was LIVE but is now missing (and the API request was successful), assume it has FINISHED.
+        if (isLiveFetchSuccess) {
+          const currentLiveIds = new Set(liveMatches.map((m: Match) => m.id));
+          previousMatchesRef.current.forEach((prevMatch: Match) => {
+            if (!currentLiveIds.has(prevMatch.id) && prevMatch.status === 'LIVE') {
+              const existingIdx = finishedMatchesRef.current.findIndex(fm => fm.id === prevMatch.id);
+              const finishedMatch: Match = { ...prevMatch, status: 'FINISHED', time: 'FT' };
+              if (existingIdx >= 0) {
+                finishedMatchesRef.current[existingIdx] = finishedMatch;
+              } else {
+                finishedMatchesRef.current.push(finishedMatch);
+              }
+            }
+          });
+        }
 
         // 3. Combine them intelligently
         const liveIds = liveMatches.map((m: Match) => m.id);
@@ -197,7 +217,7 @@ function App() {
             setTimeout(() => setAlerts(prev => prev.filter(a => a.id !== alertId)), 5000);
           });
         }
-        
+
         // Always track the IDs so we don't alert them later
         newHighlightMatches.forEach(m => highlightMatchIdsRef.current.add(m.id));
         initialLoadCompleteRef.current = true;
@@ -519,7 +539,7 @@ function App() {
                               }}
                               className="rounded-full bg-red-400/10 border border-red-400/30 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-200 hover:bg-red-500/20 transition flex items-center gap-1"
                             >
-                              <Play className="w-3 h-3" /> {typeof match.homeTeam === 'object' ? match.homeTeam.code : String(match.homeTeam).substring(0,3)} vs {typeof match.awayTeam === 'object' ? match.awayTeam.code : String(match.awayTeam).substring(0,3)}
+                              <Play className="w-3 h-3" /> {typeof match.homeTeam === 'object' ? match.homeTeam.code : String(match.homeTeam).substring(0, 3)} vs {typeof match.awayTeam === 'object' ? match.awayTeam.code : String(match.awayTeam).substring(0, 3)}
                             </button>
                           ))}
                         </div>
