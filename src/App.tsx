@@ -361,13 +361,7 @@ function App() {
   });
 
   const highlightMatches = matches.filter((m) => m.status === 'FINISHED' && !!m.youtubeHighlightId);
-  const pendingHighlightMatches = matches.filter((m) => m.status === 'FINISHED' && !m.youtubeHighlightId);
 
-  const sortedFilteredMatches = activeTab === 'FINISHED'
-    ? [...filteredMatches.filter((m) => !!m.youtubeHighlightId), ...filteredMatches.filter((m) => !m.youtubeHighlightId)]
-    : filteredMatches;
-
-  const highlightMatches = matches.filter((m) => m.status === 'FINISHED' && !!m.youtubeHighlightId);
   const sortedFilteredMatches = activeTab === 'FINISHED'
     ? [...filteredMatches.filter((m) => !!m.youtubeHighlightId), ...filteredMatches.filter((m) => !m.youtubeHighlightId)]
     : filteredMatches;
