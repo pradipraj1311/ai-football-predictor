@@ -12,7 +12,7 @@ import { H2HMatrix } from './components/H2HMatrix';
 import { PrivacyPolicy } from './components/PrivacyPolicy';
 import { TermsOfService } from './components/TermsOfService';
 import { GLOBAL_TEAMS_DIRECTORY, WORLD_CUP_STANDINGS, FootballTeamProfile } from './data';
-import { BrainCircuit, Shield, Calendar, History, Globe, Coins, CloudRain, Thermometer, BellRing, Target, ListOrdered, Activity, Trophy, Play } from 'lucide-react';
+import { BrainCircuit, Shield, Calendar, History, Globe, Coins, CloudRain, Thermometer, BellRing, Target, ListOrdered, Activity, Trophy, Play, Youtube } from 'lucide-react';
 
 function App() {
 
@@ -33,6 +33,7 @@ function App() {
   const previousMatchesRef = useRef<Match[]>([]);
   const finishedMatchesRef = useRef<Match[]>([]);
   const highlightMatchIdsRef = useRef<Set<string>>(new Set());
+  const initialLoadCompleteRef = useRef<boolean>(false);
 
   useEffect(() => {
     try {
@@ -167,33 +168,40 @@ function App() {
         // State Update
         setMatches(combinedMatches);
 
-        // --- NEW: Highlight discovery for finished matches ---
+        // --- FIXED: Highlight discovery alert flood ---
         const newHighlightMatches = combinedMatches.filter((m: Match) =>
           m.status === 'FINISHED' &&
           m.youtubeHighlightId &&
           !highlightMatchIdsRef.current.has(m.id)
         );
 
-        newHighlightMatches.forEach((m) => {
-          highlightMatchIdsRef.current.add(m.id);
-          const matchName = `${typeof m.homeTeam === 'object' ? m.homeTeam.name : m.homeTeam} vs ${typeof m.awayTeam === 'object' ? m.awayTeam.name : m.awayTeam}`;
-          const alertId = Date.now() + Math.random();
-          setAlerts(prev => [
-            ...prev,
-            {
-              id: alertId,
-              matchName,
-              message: 'New match highlight available! Tap to watch.',
-              minute: 'HIGHLIGHT',
-              onClick: () => {
-                setSelectedMatch(m);
-                setActiveTab('FINISHED');
-                setTimeout(() => document.getElementById('match-highlights')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
+        // Only trigger popups for newly discovered highlights AFTER the initial load
+        if (initialLoadCompleteRef.current) {
+          newHighlightMatches.forEach((m) => {
+            const matchName = `${typeof m.homeTeam === 'object' ? m.homeTeam.name : m.homeTeam} vs ${typeof m.awayTeam === 'object' ? m.awayTeam.name : m.awayTeam}`;
+            const alertId = Date.now() + Math.random();
+            setAlerts(prev => [
+              ...prev,
+              {
+                id: alertId,
+                matchName,
+                message: 'New match highlight available! Tap to watch.',
+                minute: 'HIGHLIGHT',
+                onClick: () => {
+                  setSelectedMatch(m);
+                  setActiveTab('FINISHED');
+                  setTimeout(() => document.getElementById('match-highlights')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
+                }
               }
-            }
-          ]);
-          setTimeout(() => setAlerts(prev => prev.filter(a => a.id !== alertId)), 5000);
-        });
+            ]);
+            setTimeout(() => setAlerts(prev => prev.filter(a => a.id !== alertId)), 5000);
+          });
+        }
+        
+        // Always track the IDs so we don't alert them later
+        newHighlightMatches.forEach(m => highlightMatchIdsRef.current.add(m.id));
+        initialLoadCompleteRef.current = true;
+
 
         // --- NEW: FULLY DYNAMIC TOURNAMENT STANDINGS ENGINE ---
         let newDynamicStandings: Record<string, any[]> = {
@@ -316,13 +324,6 @@ function App() {
 
       } catch (err) {
         console.error("Pipeline Error:", err);
-        // Show the error briefly as an alert locally for easier debugging
-        setAlerts(prev => [...prev, {
-          id: Date.now(),
-          matchName: "System Error",
-          message: String(err),
-          minute: "!"
-        }]);
       }
     };
 
@@ -335,6 +336,18 @@ function App() {
     const testAlert = { id: Date.now(), matchName: "ARG v BRA", message: "GOAL! Argentina [1] - 0 Brazil", minute: 42 };
     setAlerts(prev => [...prev, testAlert]);
     setTimeout(() => setAlerts(prev => prev.filter(a => a.id !== testAlert.id)), 4000);
+  };
+
+  const handleGlobalHighlightsClick = () => {
+    const firstHighlightMatch = matches.find((m) => m.status === 'FINISHED' && !!m.youtubeHighlightId);
+    if (firstHighlightMatch) {
+      setSelectedMatch(firstHighlightMatch);
+      setSelectedTeam(null);
+      setActiveTab('FINISHED');
+      setTimeout(() => document.getElementById('match-highlights')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 200);
+    } else {
+      setActiveTab('FINISHED');
+    }
   };
 
   // SOFASCORE STYLE TAB FILTERING
@@ -390,6 +403,9 @@ function App() {
 
           {/* Premium Navbar Buttons - Top Left */}
           <div className="hidden lg:flex items-center gap-1.5 bg-slate-900/60 p-1.5 rounded-xl border border-white/10 shadow-[inset_0_0_15px_rgba(0,0,0,0.5)]">
+            {/* NEW: Global Highlights Button */}
+            <button onClick={handleGlobalHighlightsClick} className="text-[10px] font-black text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-lg uppercase tracking-widest hover:bg-red-500/20 hover:shadow-[0_0_15px_rgba(239,68,68,0.2)] transition-all flex items-center gap-1.5"><Youtube className="w-3.5 h-3.5" /> Highlights</button>
+            <div className="w-px h-4 bg-white/10 mx-1"></div>
             <button onClick={triggerTestGoal} className="text-[10px] font-black text-slate-400 hover:text-white hover:bg-white/5 px-3 py-2 rounded-lg uppercase tracking-widest transition-all flex items-center gap-1.5"><BellRing className="w-3.5 h-3.5" /> Alerts</button>
             <div className="w-px h-4 bg-white/10 mx-1"></div>
             <button onClick={() => document.getElementById('fan-poll')?.scrollIntoView({ behavior: 'smooth' })} className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 rounded-lg uppercase tracking-widest hover:bg-emerald-500/20 hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] transition-all flex items-center gap-1.5"><Trophy className="w-3.5 h-3.5" /> Fan Poll</button>
@@ -400,10 +416,10 @@ function App() {
 
         {/* Mobile fallback buttons (Icons only to save space) */}
         <div className="lg:hidden flex items-center gap-1.5">
+          <button onClick={handleGlobalHighlightsClick} className="text-red-400 bg-red-500/10 border border-red-500/20 p-1.5 rounded-lg hover:bg-red-500/20 transition-colors" aria-label="Highlights"><Youtube className="w-4 h-4" /></button>
           <button onClick={triggerTestGoal} className="text-slate-400 bg-white/5 border border-white/10 p-1.5 rounded-lg hover:bg-white/10 hover:text-white transition-colors" aria-label="Alerts"><BellRing className="w-4 h-4" /></button>
           <button onClick={() => setShowQuiz(true)} className="text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 p-1.5 rounded-lg hover:bg-indigo-500/20 transition-colors" aria-label="Trivia Quiz"><BrainCircuit className="w-4 h-4" /></button>
           <button onClick={() => setShowProps(true)} className="text-amber-400 bg-amber-500/10 border border-amber-500/20 p-1.5 rounded-lg hover:bg-amber-500/20 transition-colors" aria-label="Player Props"><Coins className="w-4 h-4" /></button>
-          <button onClick={() => document.getElementById('fan-poll')?.scrollIntoView({ behavior: 'smooth' })} className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1.5 rounded-lg uppercase tracking-widest flex items-center gap-1.5 transition-colors"><Trophy className="w-3.5 h-3.5" /> Poll</button>
         </div>
       </nav>
       {path === '/privacy-policy' ? (
@@ -486,11 +502,11 @@ function App() {
               ) : activeTab !== 'TEAMS' ? (
                 <>
                   {activeTab === 'FINISHED' && highlightMatches.length > 0 && (
-                    <div className="bg-amber-500/10 border border-amber-400/20 rounded-3xl p-4 mb-4 shadow-inner animate-fade-in-up">
+                    <div className="bg-red-500/10 border border-red-400/20 rounded-3xl p-4 mb-4 shadow-inner animate-fade-in-up">
                       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                         <div>
-                          <p className="text-[10px] font-black uppercase tracking-widest text-amber-300">Highlighted Results</p>
-                          <p className="mt-1 text-sm font-bold text-white">Matches with YouTube highlights are pinned to the top for fast access.</p>
+                          <p className="text-[10px] font-black uppercase tracking-widest text-red-400 flex items-center gap-1.5"><Youtube className="w-3.5 h-3.5" /> Featured Results</p>
+                          <p className="mt-1 text-xs text-slate-300">Matches with official highlights.</p>
                         </div>
                         <div className="flex flex-wrap gap-2">
                           {highlightMatches.slice(0, 3).map((match) => (
@@ -501,9 +517,9 @@ function App() {
                                 setSelectedTeam(null);
                                 setTimeout(() => document.getElementById('match-highlights')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 200);
                               }}
-                              className="rounded-full bg-amber-400/10 border border-amber-300/30 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-amber-100 hover:bg-amber-400/20 transition"
+                              className="rounded-full bg-red-400/10 border border-red-400/30 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-200 hover:bg-red-500/20 transition flex items-center gap-1"
                             >
-                              {typeof match.homeTeam === 'object' ? match.homeTeam.name : match.homeTeam} vs {typeof match.awayTeam === 'object' ? match.awayTeam.name : match.awayTeam}
+                              <Play className="w-3 h-3" /> {typeof match.homeTeam === 'object' ? match.homeTeam.code : String(match.homeTeam).substring(0,3)} vs {typeof match.awayTeam === 'object' ? match.awayTeam.code : String(match.awayTeam).substring(0,3)}
                             </button>
                           ))}
                         </div>
@@ -621,70 +637,37 @@ function App() {
 
                 {/* --- NEW: USER-FRIENDLY YOUTUBE HIGHLIGHTS --- */}
                 {(selectedMatch as any).youtubeHighlightId && selectedMatch.status === 'FINISHED' && (
-                  <>
-                    <div className="bg-amber-500/10 border border-amber-400/20 rounded-2xl p-4 mt-6 text-amber-100 shadow-inner">
-                      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                        <div>
-                          <p className="text-[10px] font-black uppercase tracking-widest text-amber-300">Official match highlight</p>
-                          <p className="mt-1 text-sm font-bold text-white">A new highlight is ready to watch for this finished result.</p>
-                        </div>
-                        <button
-                          onClick={() => document.getElementById('match-highlights')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                          className="rounded-full bg-amber-400/15 border border-amber-300/30 px-4 py-2 text-xs font-black uppercase tracking-widest text-amber-100 hover:bg-amber-400/20 transition"
-                        >
-                          Go to highlights
-                        </button>
+                  <div id="match-highlights" className="bg-[#0B1121] border border-white/5 rounded-3xl overflow-hidden shadow-2xl mt-4 animate-fade-in-up">
+                    <div className="md:flex md:items-center md:justify-between bg-gradient-to-r from-red-900/20 via-[#0B1121] to-[#0B1121] p-5 border-b border-white/5 gap-4">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-red-400 flex items-center gap-1.5"><Youtube className="w-3.5 h-3.5" /> Match highlights</p>
+                        <h3 className="mt-2 text-lg font-black text-white">Official YouTube highlight</h3>
                       </div>
+                      <a
+                        href={`https://www.youtube.com/watch?v=${(selectedMatch as any).youtubeHighlightId}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 rounded-full border border-red-500/30 bg-red-500/20 px-4 py-2.5 text-xs font-black uppercase tracking-widest text-red-100 hover:bg-red-500/30 hover:scale-105 transition-all shadow-[0_0_15px_rgba(239,68,68,0.2)]"
+                      >
+                        <Play className="w-4 h-4 text-white fill-white" />
+                        Watch on YouTube
+                      </a>
                     </div>
-                    <div id="match-highlights" className="bg-[#0B1121] border border-white/5 rounded-3xl overflow-hidden shadow-2xl mt-4 animate-fade-in-up">
-                      <div className="md:flex md:items-center md:justify-between bg-gradient-to-r from-red-900/15 via-transparent to-transparent p-5 border-b border-white/5 gap-4">
-                        <div>
-                          <p className="text-[10px] font-black uppercase tracking-widest text-amber-300">Match highlights</p>
-                          <h3 className="mt-2 text-lg font-black text-white">Official YouTube highlight</h3>
-                          <p className="mt-2 text-sm text-slate-400 max-w-2xl">If the embedded video is restricted, use the direct YouTube link below for the full clip.</p>
-                        </div>
-                        <a
-                          href={`https://www.youtube.com/watch?v=${(selectedMatch as any).youtubeHighlightId}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-2 rounded-full border border-amber-400/20 bg-amber-500/10 px-4 py-3 text-xs font-black uppercase tracking-widest text-amber-100 hover:bg-amber-400/20 transition"
-                        >
-                          <Play className="w-4 h-4 text-amber-300" />
-                          Watch on YouTube
-                        </a>
-                      </div>
-                      <div className="grid gap-4 md:grid-cols-[1.5fr_0.8fr] p-5">
-                        <div className="space-y-4">
-                          <div className="rounded-3xl overflow-hidden aspect-video bg-black">
-                            <iframe
-                              className="w-full h-full"
-                              src={`https://www.youtube.com/embed/${(selectedMatch as any).youtubeHighlightId}?autoplay=0&rel=0&modestbranding=1`}
-                              title="Match Highlights"
-                              frameBorder="0"
-                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                              allowFullScreen
-                            ></iframe>
-                          </div>
-                          <div className="rounded-3xl border border-white/5 bg-slate-950/70 p-4 text-sm text-slate-300">
-                            <p className="font-semibold text-white">Highlight details</p>
-                            <p className="mt-3 text-slate-400">Match: {typeof selectedMatch.homeTeam === 'object' ? selectedMatch.homeTeam.name : selectedMatch.homeTeam} vs {typeof selectedMatch.awayTeam === 'object' ? selectedMatch.awayTeam.name : selectedMatch.awayTeam}</p>
-                            <p className="mt-1 text-slate-400">Score: {selectedMatch.homeScore} - {selectedMatch.awayScore}</p>
-                            <p className="mt-1 text-slate-400">Competition: {selectedMatch.competition}</p>
-                          </div>
-                        </div>
-                        <div className="space-y-4">
-                          <div className="rounded-3xl border border-white/5 bg-[#0B1121] p-4">
-                            <p className="text-[10px] uppercase tracking-widest text-slate-500">Quick access</p>
-                            <p className="mt-3 text-sm text-slate-300">Use the pinned highlighted results to jump directly to the latest match highlight.</p>
-                          </div>
-                          <div className="rounded-3xl border border-white/5 bg-[#0B1121] p-4 text-sm text-slate-300">
-                            <p className="font-semibold text-white">Playback tip</p>
-                            <p className="mt-2">If the embedded player does not load, click the button above to open the video on YouTube.</p>
-                          </div>
-                        </div>
-                      </div>
+                    <div className="p-5 flex justify-center">
+                       <div className="rounded-2xl overflow-hidden border border-white/10 w-full max-w-3xl aspect-video bg-black/50 flex flex-col items-center justify-center text-center p-6 relative">
+                          <Youtube className="w-16 h-16 text-red-500/50 mb-4" />
+                          <h4 className="text-white font-bold mb-2">Video playback restricted by content owner</h4>
+                          <p className="text-sm text-slate-400 mb-6 max-w-md">Official broadcasters require these highlights to be viewed directly on YouTube. Click the button above to watch the full HD match highlights.</p>
+                          <a
+                            href={`https://www.youtube.com/watch?v=${(selectedMatch as any).youtubeHighlightId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="absolute inset-0 z-10"
+                            aria-label="Watch on YouTube"
+                          ></a>
+                       </div>
                     </div>
-                  </>
+                  </div>
                 )}
 
                 {selectedMatch.status === 'FINISHED' && !(selectedMatch as any).youtubeHighlightId && (
@@ -733,9 +716,9 @@ function App() {
             onClick={() => alert.onClick?.()}
             className={`bg-[#0B1121] border ${alert.onClick ? 'border-amber-500/50 cursor-pointer hover:bg-white/5' : 'border-emerald-500/50'} p-4 rounded-2xl shadow-[0_10px_40px_rgba(16,185,129,0.3)] flex gap-4 items-center animate-slide-in pointer-events-auto`}
           >
-            <div className={`p-2.5 rounded-full ${alert.onClick ? 'bg-amber-500/20 border border-amber-500/30' : 'bg-emerald-500/20 border border-emerald-500/30'}`}><Target className="w-6 h-6 text-amber-400" /></div>
+            <div className={`p-2.5 rounded-full ${alert.onClick ? 'bg-amber-500/20 border border-amber-500/30' : 'bg-emerald-500/20 border border-emerald-500/30'}`}><Target className={`w-6 h-6 ${alert.onClick ? 'text-amber-400' : 'text-emerald-400'}`} /></div>
             <div>
-              <span className="text-[10px] text-amber-300 font-black uppercase tracking-widest block mb-0.5">{alert.matchName} • {alert.minute}</span>
+              <span className={`text-[10px] ${alert.onClick ? 'text-amber-300' : 'text-emerald-400'} font-black uppercase tracking-widest block mb-0.5`}>{alert.matchName} • {alert.minute}</span>
               <span className="text-sm font-black text-white tracking-wide">{alert.message}</span>
             </div>
           </div>
