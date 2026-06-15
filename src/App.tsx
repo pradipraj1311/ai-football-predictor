@@ -674,16 +674,27 @@ function App() {
                       </a>
                     </div>
                     <div className="p-5 flex justify-center">
-                      <div className="w-full max-w-3xl aspect-video rounded-2xl overflow-hidden border border-white/10 shadow-lg relative bg-black/50">
-                        <iframe
-                          src={`https://www.youtube.com/embed/${(selectedMatch as any).youtubeHighlightId}`}
-                          title="YouTube match highlight player"
-                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                          referrerPolicy="strict-origin-when-cross-origin"
-                          allowFullScreen
-                          className="w-full h-full absolute inset-0 border-0"
-                        ></iframe>
-                      </div>
+                      <a 
+                        href={`https://www.youtube.com/watch?v=${(selectedMatch as any).youtubeHighlightId}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full max-w-3xl aspect-video rounded-2xl overflow-hidden border border-white/10 shadow-lg relative bg-black/50 group block cursor-pointer"
+                      >
+                        <img 
+                          src={`https://img.youtube.com/vi/${(selectedMatch as any).youtubeHighlightId}/maxresdefault.jpg`} 
+                          alt="Match Highlight Thumbnail" 
+                          className="w-full h-full object-cover opacity-70 group-hover:opacity-90 transition-opacity duration-300"
+                          onError={(e) => { (e.target as HTMLImageElement).src = `https://img.youtube.com/vi/${(selectedMatch as any).youtubeHighlightId}/hqdefault.jpg`; }}
+                        />
+                        <div className="absolute inset-0 flex flex-col items-center justify-center transition-all duration-300">
+                           <div className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(220,38,38,0.6)] group-hover:scale-110 transition-transform duration-300">
+                             <Play className="w-8 h-8 text-white fill-white ml-1" />
+                           </div>
+                           <span className="mt-4 bg-black/80 text-white text-xs font-bold px-4 py-1.5 rounded-full border border-white/20 backdrop-blur-md shadow-lg text-center">
+                             Official FIFA Highlight • Opens in YouTube
+                           </span>
+                        </div>
+                      </a>
                     </div>
                   </div>
                 )}
