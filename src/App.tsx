@@ -360,6 +360,18 @@ function App() {
     return false;
   });
 
+  const highlightMatches = matches.filter((m) => m.status === 'FINISHED' && !!m.youtubeHighlightId);
+  const pendingHighlightMatches = matches.filter((m) => m.status === 'FINISHED' && !m.youtubeHighlightId);
+
+  const sortedFilteredMatches = activeTab === 'FINISHED'
+    ? [...filteredMatches.filter((m) => !!m.youtubeHighlightId), ...filteredMatches.filter((m) => !m.youtubeHighlightId)]
+    : filteredMatches;
+
+  const highlightMatches = matches.filter((m) => m.status === 'FINISHED' && !!m.youtubeHighlightId);
+  const sortedFilteredMatches = activeTab === 'FINISHED'
+    ? [...filteredMatches.filter((m) => !!m.youtubeHighlightId), ...filteredMatches.filter((m) => !m.youtubeHighlightId)]
+    : filteredMatches;
+
   const path = window.location.pathname;
 
   return (
@@ -476,28 +488,55 @@ function App() {
                   <p className="text-xs text-slate-400 leading-relaxed">The top two teams from each group, along with the eight best third-placed teams, will advance to the Round of 32.</p>
                 </div>
               ) : activeTab !== 'TEAMS' ? (
-                filteredMatches.length === 0 ? (
-                  <div className="text-xs text-slate-500 text-center p-8 bg-[#0B1121] rounded-xl border border-white/5 flex flex-col items-center gap-2">
-                    <span className="text-2xl">⚽</span><span className="font-bold">No matches here yet.</span>
-                  </div>
-                ) : (
-                  filteredMatches.map((match, index) => (
-                    <div key={match.id} className="animate-fade-in-up" style={{ animationDelay: `${index * 50}ms` }}>
-                      <MatchCard
-                        match={match}
-                        isSelected={selectedMatch?.id === match.id && !selectedTeam}
-                        onSelect={() => {
-                          setSelectedMatch(match);
-                          setSelectedTeam(null);
-                          // 🚨 ADDED: Smooth scroll for mobile users
-                          setTimeout(() => {
-                            document.getElementById('ai-analysis-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                          }, 100);
-                        }}
-                      />
+                <>
+                  {activeTab === 'FINISHED' && highlightMatches.length > 0 && (
+                    <div className="bg-amber-500/10 border border-amber-400/20 rounded-3xl p-4 mb-4 shadow-inner animate-fade-in-up">
+                      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-widest text-amber-300">Highlighted Results</p>
+                          <p className="mt-1 text-sm font-bold text-white">Matches with YouTube highlights are pinned to the top for fast access.</p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {highlightMatches.slice(0, 3).map((match) => (
+                            <button
+                              key={match.id}
+                              onClick={() => {
+                                setSelectedMatch(match);
+                                setSelectedTeam(null);
+                                setTimeout(() => document.getElementById('match-highlights')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 200);
+                              }}
+                              className="rounded-full bg-amber-400/10 border border-amber-300/30 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-amber-100 hover:bg-amber-400/20 transition"
+                            >
+                              {typeof match.homeTeam === 'object' ? match.homeTeam.name : match.homeTeam} vs {typeof match.awayTeam === 'object' ? match.awayTeam.name : match.awayTeam}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
-                  ))
-                )
+                  )}
+
+                  {sortedFilteredMatches.length === 0 ? (
+                    <div className="text-xs text-slate-500 text-center p-8 bg-[#0B1121] rounded-xl border border-white/5 flex flex-col items-center gap-2">
+                      <span className="text-2xl">⚽</span><span className="font-bold">No matches here yet.</span>
+                    </div>
+                  ) : (
+                    sortedFilteredMatches.map((match, index) => (
+                      <div key={match.id} className="animate-fade-in-up" style={{ animationDelay: `${index * 50}ms` }}>
+                        <MatchCard
+                          match={match}
+                          isSelected={selectedMatch?.id === match.id && !selectedTeam}
+                          onSelect={() => {
+                            setSelectedMatch(match);
+                            setSelectedTeam(null);
+                            // 🚨 ADDED: Smooth scroll for mobile users
+                            setTimeout(() => {
+                              document.getElementById('ai-analysis-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }, 100);
+                          }}
+                        />
+                      </div>
+                    ))
+                  )
               ) : (
                 GLOBAL_TEAMS_DIRECTORY.map((team, index) => (
                   <div key={team.id} onClick={() => setSelectedTeam(team)} className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all animate-fade-in-up ${selectedTeam?.id === team.id ? 'bg-gradient-to-r from-indigo-950/40 to-[#0B1121] border-indigo-500/50' : 'bg-[#0B1121] border-white/5 hover:border-indigo-500/30'}`} style={{ animationDelay: `${index * 30}ms` }}>
@@ -507,145 +546,145 @@ function App() {
                     </div>
                     <span className="text-[9px] font-mono font-bold bg-white/5 border border-white/10 text-slate-400 px-1.5 py-0.5 rounded">{team.code}</span>
                   </div>
-                ))
+                  ))
               )}
+                </div>
             </div>
-          </div>
 
-          <div className="lg:col-span-8 xl:col-span-9 flex flex-col gap-6" id="ai-analysis-section">
-            {activeTab === 'STANDINGS' ? (
-              <div className="flex flex-col gap-4">
-                {/* Tournament Selector Pills */}
-                <div className="flex items-center gap-2 overflow-x-auto pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                  {Object.keys(dynamicStandings || {}).map(comp => (
-                    <button
-                      key={comp}
-                      onClick={() => setSelectedTournament(comp)}
-                      className={`shrink-0 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${selectedTournament === comp ? 'bg-indigo-600 text-white border-indigo-500 shadow-[0_0_15px_rgba(79,70,229,0.3)]' : 'bg-[#0B1121] text-slate-400 border-white/5 hover:bg-white/5'}`}
-                    >
-                      {comp}
-                    </button>
-                  ))}
+            <div className="lg:col-span-8 xl:col-span-9 flex flex-col gap-6" id="ai-analysis-section">
+              {activeTab === 'STANDINGS' ? (
+                <div className="flex flex-col gap-4">
+                  {/* Tournament Selector Pills */}
+                  <div className="flex items-center gap-2 overflow-x-auto pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                    {Object.keys(dynamicStandings || {}).map(comp => (
+                      <button
+                        key={comp}
+                        onClick={() => setSelectedTournament(comp)}
+                        className={`shrink-0 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${selectedTournament === comp ? 'bg-indigo-600 text-white border-indigo-500 shadow-[0_0_15px_rgba(79,70,229,0.3)]' : 'bg-[#0B1121] text-slate-400 border-white/5 hover:bg-white/5'}`}
+                      >
+                        {comp}
+                      </button>
+                    ))}
+                  </div>
+                  <StandingsGrid standings={dynamicStandings[selectedTournament] || []} />
                 </div>
-                <StandingsGrid standings={dynamicStandings[selectedTournament] || []} />
-              </div>
-            ) : activeTab === 'TEAMS' && selectedTeam ? (
-              <div className="flex flex-col gap-6">
-                <div className="bg-[#0B1121] border border-white/5 rounded-2xl p-6 relative overflow-hidden shadow-2xl">
-                  <div className="absolute top-0 right-0 -mt-16 -mr-16 w-64 h-64 bg-indigo-500/5 rounded-full blur-3xl"></div>
-                  <div className="flex items-center gap-4 mb-6 relative z-10">
-                    <span className="text-6xl p-4 bg-slate-900 rounded-2xl border border-white/5 shadow-inner">{selectedTeam.logo || '⚽'}</span>
-                    <div>
-                      <h2 className="text-2xl font-black text-white tracking-tight">{selectedTeam.name}</h2>
-                      <p className="text-xs text-slate-400 font-mono mt-0.5 flex items-center gap-1.5">{selectedTeam.country} • Founded in {selectedTeam.founded}</p>
+              ) : activeTab === 'TEAMS' && selectedTeam ? (
+                <div className="flex flex-col gap-6">
+                  <div className="bg-[#0B1121] border border-white/5 rounded-2xl p-6 relative overflow-hidden shadow-2xl">
+                    <div className="absolute top-0 right-0 -mt-16 -mr-16 w-64 h-64 bg-indigo-500/5 rounded-full blur-3xl"></div>
+                    <div className="flex items-center gap-4 mb-6 relative z-10">
+                      <span className="text-6xl p-4 bg-slate-900 rounded-2xl border border-white/5 shadow-inner">{selectedTeam.logo || '⚽'}</span>
+                      <div>
+                        <h2 className="text-2xl font-black text-white tracking-tight">{selectedTeam.name}</h2>
+                        <p className="text-xs text-slate-400 font-mono mt-0.5 flex items-center gap-1.5">{selectedTeam.country} • Founded in {selectedTeam.founded}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="bg-[#0B1121] border border-white/5 rounded-2xl p-6 shadow-xl">
+                      <h4 className="flex items-center gap-2 text-[10px] font-black text-slate-400 tracking-widest uppercase mb-4"><Activity className="w-4 h-4 text-emerald-400" /> Form Analytics</h4>
+                      <div className="flex gap-2">
+                        {selectedTeam.form.map((f, i) => (
+                          <span key={i} className={`w-8 h-8 rounded-lg text-xs font-black flex items-center justify-center font-mono ${f === 'W' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : f === 'D' ? 'bg-slate-500/20 text-slate-400 border border-white/10' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>{f}</span>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="bg-[#0B1121] border border-white/5 rounded-2xl p-6 shadow-xl">
-                    <h4 className="flex items-center gap-2 text-[10px] font-black text-slate-400 tracking-widest uppercase mb-4"><Activity className="w-4 h-4 text-emerald-400" /> Form Analytics</h4>
-                    <div className="flex gap-2">
-                      {selectedTeam.form.map((f, i) => (
-                        <span key={i} className={`w-8 h-8 rounded-lg text-xs font-black flex items-center justify-center font-mono ${f === 'W' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : f === 'D' ? 'bg-slate-500/20 text-slate-400 border border-white/10' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>{f}</span>
-                      ))}
+              ) : selectedMatch ? (
+                <>
+                  <div className="bg-[#0B1121] border border-white/5 rounded-2xl p-6 relative overflow-hidden shadow-2xl">
+                    <div className="flex justify-between items-center mb-6">
+                      <span className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider">{selectedMatch.competition}</span>
+                      <span className={`text-[10px] font-black px-2.5 py-0.5 rounded border ${selectedMatch.status === 'LIVE' ? 'bg-red-500/10 text-red-400 border-red-500/20 animate-pulse' : selectedMatch.status === 'UPCOMING' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 'bg-white/5 text-slate-400 border-white/10'}`}>{selectedMatch.status}</span>
+                    </div>
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center justify-center gap-3 w-1/3 text-center">
+                        <span className="text-4xl">{selectedMatch.homeTeam?.logo || '⚽'}</span>
+                        <span className="text-lg font-black text-white">{selectedMatch.homeTeam?.name}</span>
+                      </div>
+                      <div className="flex flex-col items-center justify-center w-1/3">
+                        {selectedMatch.status === 'LIVE' || selectedMatch.status === 'FINISHED' ? (
+                          <div className="flex items-center gap-4 text-5xl font-black text-white font-mono">
+                            <span>{selectedMatch.homeScore}</span><span className="text-slate-600 pb-2">-</span><span>{selectedMatch.awayScore}</span>
+                          </div>
+                        ) : (
+                          <div className="text-xl font-mono font-black text-indigo-400 bg-indigo-500/5 border border-indigo-500/10 px-4 py-1.5 rounded-xl tracking-wider">{selectedMatch.time}</div>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-center gap-3 w-1/3 text-center">
+                        <span className="text-4xl">{selectedMatch.awayTeam?.logo || '⚽'}</span>
+                        <span className="text-lg font-black text-white">{selectedMatch.awayTeam?.name}</span>
+                      </div>
+                    </div>
+                    <div className="flex gap-4 justify-center mt-6 pt-6 border-t border-white/5">
+                      <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest"><Thermometer className="w-3.5 h-3.5 text-red-400" /> Temp: 24°C (Optimal)</div>
                     </div>
                   </div>
-                </div>
-              </div>
-            ) : selectedMatch ? (
-              <>
-                <div className="bg-[#0B1121] border border-white/5 rounded-2xl p-6 relative overflow-hidden shadow-2xl">
-                  <div className="flex justify-between items-center mb-6">
-                    <span className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider">{selectedMatch.competition}</span>
-                    <span className={`text-[10px] font-black px-2.5 py-0.5 rounded border ${selectedMatch.status === 'LIVE' ? 'bg-red-500/10 text-red-400 border-red-500/20 animate-pulse' : selectedMatch.status === 'UPCOMING' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 'bg-white/5 text-slate-400 border-white/10'}`}>{selectedMatch.status}</span>
-                  </div>
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center justify-center gap-3 w-1/3 text-center">
-                      <span className="text-4xl">{selectedMatch.homeTeam?.logo || '⚽'}</span>
-                      <span className="text-lg font-black text-white">{selectedMatch.homeTeam?.name}</span>
-                    </div>
-                    <div className="flex flex-col items-center justify-center w-1/3">
-                      {selectedMatch.status === 'LIVE' || selectedMatch.status === 'FINISHED' ? (
-                        <div className="flex items-center gap-4 text-5xl font-black text-white font-mono">
-                          <span>{selectedMatch.homeScore}</span><span className="text-slate-600 pb-2">-</span><span>{selectedMatch.awayScore}</span>
+
+                  {/* --- NEW: USER-FRIENDLY YOUTUBE HIGHLIGHTS --- */}
+                  {(selectedMatch as any).youtubeHighlightId && selectedMatch.status === 'FINISHED' && (
+                    <>
+                      <div className="bg-amber-500/10 border border-amber-400/20 rounded-2xl p-4 mt-6 text-amber-100 shadow-inner">
+                        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-amber-300">Official match highlight</p>
+                            <p className="mt-1 text-sm font-bold text-white">A new highlight is ready to watch for this finished result.</p>
+                          </div>
+                          <button
+                            onClick={() => document.getElementById('match-highlights')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                            className="rounded-full bg-amber-400/15 border border-amber-300/30 px-4 py-2 text-xs font-black uppercase tracking-widest text-amber-100 hover:bg-amber-400/20 transition"
+                          >
+                            Go to highlights
+                          </button>
                         </div>
-                      ) : (
-                        <div className="text-xl font-mono font-black text-indigo-400 bg-indigo-500/5 border border-indigo-500/10 px-4 py-1.5 rounded-xl tracking-wider">{selectedMatch.time}</div>
-                      )}
-                    </div>
-                    <div className="flex items-center justify-center gap-3 w-1/3 text-center">
-                      <span className="text-4xl">{selectedMatch.awayTeam?.logo || '⚽'}</span>
-                      <span className="text-lg font-black text-white">{selectedMatch.awayTeam?.name}</span>
-                    </div>
-                  </div>
-                  <div className="flex gap-4 justify-center mt-6 pt-6 border-t border-white/5">
-                    <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest"><Thermometer className="w-3.5 h-3.5 text-red-400" /> Temp: 24°C (Optimal)</div>
-                  </div>
-                </div>
-
-                {/* --- NEW: USER-FRIENDLY YOUTUBE HIGHLIGHTS --- */}
-                {(selectedMatch as any).youtubeHighlightId && selectedMatch.status === 'FINISHED' && (
-                  <>
-                    <div className="bg-amber-500/10 border border-amber-400/20 rounded-2xl p-4 mt-6 text-amber-100 shadow-inner">
-                      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                        <div>
-                          <p className="text-[10px] font-black uppercase tracking-widest text-amber-300">Official match highlight</p>
-                          <p className="mt-1 text-sm font-bold text-white">A new highlight is ready to watch for this finished result.</p>
+                      </div>
+                      <div id="match-highlights" className="bg-[#0B1121] border border-white/5 rounded-2xl flex flex-col overflow-hidden shadow-2xl mt-4 animate-fade-in-up">
+                        <div className="bg-gradient-to-r from-red-900/20 to-transparent p-4 border-b border-white/5 flex items-center gap-2">
+                          <Play className="w-4 h-4 text-red-500" />
+                          <h3 className="text-sm font-black text-white uppercase tracking-wider">Match highlights</h3>
                         </div>
-                        <button
-                          onClick={() => document.getElementById('match-highlights')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                          className="rounded-full bg-amber-400/15 border border-amber-300/30 px-4 py-2 text-xs font-black uppercase tracking-widest text-amber-100 hover:bg-amber-400/20 transition"
-                        >
-                          Go to highlights
-                        </button>
+                        <div className="aspect-video w-full bg-black relative">
+                          <iframe
+                            className="absolute top-0 left-0 w-full h-full"
+                            src={`https://www.youtube.com/embed/${(selectedMatch as any).youtubeHighlightId}?autoplay=0&rel=0&modestbranding=1`}
+                            title="Match Highlights"
+                            frameBorder="0"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowFullScreen
+                          ></iframe>
+                        </div>
                       </div>
-                    </div>
-                    <div id="match-highlights" className="bg-[#0B1121] border border-white/5 rounded-2xl flex flex-col overflow-hidden shadow-2xl mt-4 animate-fade-in-up">
-                      <div className="bg-gradient-to-r from-red-900/20 to-transparent p-4 border-b border-white/5 flex items-center gap-2">
-                        <Play className="w-4 h-4 text-red-500" />
-                        <h3 className="text-sm font-black text-white uppercase tracking-wider">Match highlights</h3>
-                      </div>
-                      <div className="aspect-video w-full bg-black relative">
-                        <iframe
-                          className="absolute top-0 left-0 w-full h-full"
-                          src={`https://www.youtube.com/embed/${(selectedMatch as any).youtubeHighlightId}?autoplay=0&rel=0&modestbranding=1`}
-                          title="Match Highlights"
-                          frameBorder="0"
-                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                          allowFullScreen
-                        ></iframe>
-                      </div>
-                    </div>
-                  </>
-                )}
+                    </>
+                  )}
 
-                {selectedMatch.status === 'FINISHED' && !(selectedMatch as any).youtubeHighlightId && (
-                  <div className="bg-[#0B1121] border border-white/5 rounded-2xl p-4 text-slate-300 text-sm mt-6">
-                    We’re still checking for match highlights. If the game just finished, please refresh in a moment while we find the latest YouTube clip.
-                  </div>
-                )}
+                  {selectedMatch.status === 'FINISHED' && !(selectedMatch as any).youtubeHighlightId && (
+                    <div className="bg-[#0B1121] border border-white/5 rounded-2xl p-4 text-slate-300 text-sm mt-6">
+                      We’re still checking for match highlights. If the game just finished, please refresh in a moment while we find the latest YouTube clip.
+                    </div>
+                  )}
 
-                <AIPredictor match={selectedMatch} />
-                {(selectedMatch.status === 'LIVE' || selectedMatch.status === 'FINISHED') && (
-                  <>
-                    <LiveTelemetry match={selectedMatch} />
-                    <H2HMatrix match={selectedMatch} />
-                  </>
-                )}
-              </>
-            ) : (
-              <div className="text-center mt-20 text-slate-500">
-                <Globe className="w-16 h-16 text-indigo-500/20 mx-auto mb-4 animate-[spin_10s_linear_infinite]" />
-                <h2 className="text-3xl font-black text-white mb-2">FIFA World Cup 2026™</h2>
-                <span className="text-xs font-black text-indigo-400 bg-indigo-500/10 px-3 py-1 rounded-full uppercase tracking-widest border border-indigo-500/20 mb-6 inline-block">Watching from {userLocation} ({sportName})</span>
+                  <AIPredictor match={selectedMatch} />
+                  {(selectedMatch.status === 'LIVE' || selectedMatch.status === 'FINISHED') && (
+                    <>
+                      <LiveTelemetry match={selectedMatch} />
+                      <H2HMatrix match={selectedMatch} />
+                    </>
+                  )}
+                </>
+              ) : (
+                <div className="text-center mt-20 text-slate-500">
+                  <Globe className="w-16 h-16 text-indigo-500/20 mx-auto mb-4 animate-[spin_10s_linear_infinite]" />
+                  <h2 className="text-3xl font-black text-white mb-2">FIFA World Cup 2026™</h2>
+                  <span className="text-xs font-black text-indigo-400 bg-indigo-500/10 px-3 py-1 rounded-full uppercase tracking-widest border border-indigo-500/20 mb-6 inline-block">Watching from {userLocation} ({sportName})</span>
+                </div>
+              )}
+
+              {/* Global Fan Poll Section with ID for smooth scrolling */}
+              <div id="fan-poll" className="mt-8 scroll-mt-24">
+                <FanPoll />
               </div>
-            )}
-
-            {/* Global Fan Poll Section with ID for smooth scrolling */}
-            <div id="fan-poll" className="mt-8 scroll-mt-24">
-              <FanPoll />
             </div>
-          </div>
         </main>
       )}
 
