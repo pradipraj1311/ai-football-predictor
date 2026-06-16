@@ -191,7 +191,6 @@ app.get('/api/live-matches', async (_req, res) => {
   // Empty fallback for production (no dummy matches)
   const minorLeagueFallback: any[] = [];
 
-  // 🚨 તમારા સ્ક્રીનશોટમાંથી લીધેલું એકદમ સાચું URL 🚨
   const sofaUrl = 'https://sofascore6.p.rapidapi.com/api/sofascore/v1/match/live?sport_slug=football';
   const sofaOptions = {
     method: 'GET',
