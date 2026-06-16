@@ -188,7 +188,7 @@ app.get('/api/live-matches', async (_req, res) => {
     return res.status(200).set(corsHeaders).json({ matches: matchCache.data, cached: true });
   }
 
-  // 🚨 ડમી મેચ કાઢી નાખી (ખાલી Array) 🚨
+  // Empty fallback for production (no dummy matches)
   const minorLeagueFallback: any[] = [];
 
   // 🚨 તમારા સ્ક્રીનશોટમાંથી લીધેલું એકદમ સાચું URL 🚨

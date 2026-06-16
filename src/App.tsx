@@ -244,11 +244,13 @@ function App() {
             m.awayScore !== undefined;
         });
 
+        // Only track standings for these specific tournaments to prevent random temporary tables
+        const TRACKED_TOURNAMENTS = ['FIFA World Cup 2026', 'UEFA Champions League'];
+
         validMatchesToCalculate.forEach((m: Match) => {
           const comp = normalizeCompetitionName(m.competition || 'Other Competitions');
-          if (!newDynamicStandings[comp]) {
-            newDynamicStandings[comp] = [{ groupName: `${comp} Table`, entries: [] }];
-          }
+          
+          if (!TRACKED_TOURNAMENTS.includes(comp)) return;
 
           const homeScore = Number(m.homeScore) || 0;
           const awayScore = Number(m.awayScore) || 0;
