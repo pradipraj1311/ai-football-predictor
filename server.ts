@@ -211,6 +211,59 @@ app.get('/api/live-matches', async (_req, res) => {
     return undefined;
   };
 
+  const extractMatchDate = (event: any) => {
+    const dateCandidates = [
+      event.startDate,
+      event.matchDate,
+      event.match_date,
+      event.date,
+      event.scheduled?.date,
+      event.start?.date,
+      event.start_date,
+      event.start_time,
+      event.match_time,
+      event.kickoff,
+      event.kickoff_time
+    ];
+
+    for (const candidate of dateCandidates) {
+      if (!candidate) continue;
+      if (typeof candidate === 'string') {
+        const parsed = Date.parse(candidate);
+        if (!Number.isNaN(parsed)) {
+          return new Date(parsed).toISOString().split('T')[0];
+        }
+        const normalized = candidate.replace(/\//g, '-');
+        const parsed2 = Date.parse(normalized);
+        if (!Number.isNaN(parsed2)) {
+          return new Date(parsed2).toISOString().split('T')[0];
+        }
+      }
+      if (typeof candidate === 'number') {
+        const timestamp = candidate > 9999999999 ? candidate : candidate * 1000;
+        return new Date(timestamp).toISOString().split('T')[0];
+      }
+    }
+
+    const timestampCandidates = [
+      event.startTimestamp,
+      event.timestamp,
+      event.matchTimestamp,
+      event.scheduled?.timestamp,
+      event.start?.timestamp
+    ];
+    for (const ts of timestampCandidates) {
+      if (!ts) continue;
+      const timestamp = Number(ts);
+      if (!Number.isNaN(timestamp)) {
+        const millis = timestamp > 9999999999 ? timestamp : timestamp * 1000;
+        return new Date(millis).toISOString().split('T')[0];
+      }
+    }
+
+    return new Date().toISOString().split('T')[0];
+  };
+
   const normalizeCompetitionName = (rawName: any) => {
     if (!rawName) return 'Global Football';
     const name = String(rawName).trim();
@@ -267,26 +320,30 @@ app.get('/api/live-matches', async (_req, res) => {
         'Global Football'
       );
 
+      const eventDate = extractMatchDate(event);
+      const truncatedHomeCode = (event.homeTeam?.shortName || event.homeTeam?.code || event.homeTeam?.name || 'HOM').toString().substring(0, 3).toUpperCase();
+      const truncatedAwayCode = (event.awayTeam?.shortName || event.awayTeam?.code || event.awayTeam?.name || 'AWY').toString().substring(0, 3).toUpperCase();
+
       return {
         id: String(event.id),
         competition: competitionName,
         status: mappedStatus,
         minute: mappedStatus === 'LIVE' ? parsedMinute : undefined,
         time: mappedStatus === 'FINISHED' ? 'FT' : (mappedStatus === 'LIVE' ? 'LIVE' : 'TBD'),
-        date: new Date().toISOString().split('T')[0],
+        date: eventDate,
         homeScore: extractScore(event.homeScore),
         awayScore: extractScore(event.awayScore),
         homeTeam: {
           id: String(event.homeTeam?.id || 'h1'),
           name: event.homeTeam?.name || 'Home Team',
-          code: event.homeTeam?.shortName || 'HOM',
+          code: truncatedHomeCode,
           logo: '⚽',
           form: ['W', 'D', 'W']
         },
         awayTeam: {
           id: String(event.awayTeam?.id || 'a1'),
           name: event.awayTeam?.name || 'Away Team',
-          code: event.awayTeam?.shortName || 'AWY',
+          code: truncatedAwayCode,
           logo: '⚽',
           form: ['L', 'W', 'D']
         },
@@ -341,6 +398,63 @@ app.get('/api/live-matches', async (_req, res) => {
                 const dbHome = row.home_score;
                 const dbAway = row.away_score;
                 if (dbHome !== pm.homeScore || dbAway !== pm.awayScore) {
+                  try {
+                    await client.query(
+                      `UPDATE world_cup_matches SET home_score = $1, away_score = $2, db_status = 'FINISHED' WHERE id = $3`,
+                      [pm.homeScore, pm.awayScore, row.id]
+                    );
+                    console.log(`Persisted final score for match ${row.id}: ${pm.homeScore}-${pm.awayScore}`);
+                  } catch (upErr: any) {
+                    console.warn('Failed to persist live score to DB for', row.id, upErr?.message || upErr);
+                  }
+                }
+              }
+            }
+          } catch (innerErr: any) {
+            console.warn('DB mapping error for live match:', innerErr?.message || innerErr);
+            continue;
+          }
+        }
+      } catch (err: any) {
+        console.warn('Could not connect to DB for live-match mapping:', err?.message || err);
+      } finally {
+        try { if (client) client.release(); } catch (e) { /* ignore */ }
+      }
+    }
+
+    // --- Attempt to map live matches to DB rows and persist final scores ---
+    if (process.env.DB_URL) {
+      let client: any = null;
+      try {
+        client = await pool.connect();
+
+        for (const pm of processedMatches) {
+          try {
+            const homeCode = (pm.homeTeam && pm.homeTeam.code) ? String(pm.homeTeam.code).toUpperCase() : null;
+            const awayCode = (pm.awayTeam && pm.awayTeam.code) ? String(pm.awayTeam.code).toUpperCase() : null;
+            const matchDate = pm.date;
+            if (!homeCode || !awayCode || !matchDate) continue;
+
+            const findSql = `
+              SELECT id, home_team, away_team, home_score, away_score, db_status
+              FROM world_cup_matches
+              WHERE match_date = $1
+                AND (
+                  (home_team->> 'code' = $2 AND away_team->> 'code' = $3)
+                  OR (home_team->> 'code' = $3 AND away_team->> 'code' = $2)
+                )
+              LIMIT 1
+            `;
+
+            const found = await client.query(findSql, [matchDate, homeCode, awayCode]);
+            if (found && found.rows && found.rows.length > 0) {
+              const row = found.rows[0];
+              pm.id = row.id;
+
+              if (pm.status === 'FINISHED' && pm.homeScore != null && pm.awayScore != null) {
+                const dbHome = row.home_score;
+                const dbAway = row.away_score;
+                if (dbHome !== pm.homeScore || dbAway !== pm.awayScore || row.db_status !== 'FINISHED') {
                   try {
                     await client.query(
                       `UPDATE world_cup_matches SET home_score = $1, away_score = $2, db_status = 'FINISHED' WHERE id = $3`,
