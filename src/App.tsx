@@ -31,7 +31,17 @@ function App() {
   const [sportName, setSportName] = useState('Football');
   const [alerts, setAlerts] = useState<any[]>([]);
   const previousMatchesRef = useRef<Match[]>([]);
-  const finishedMatchesRef = useRef<Match[]>([]);
+
+  // Initialize persistent finished matches from LocalStorage (keeps results across page reloads)
+  const initialFinishedMatches = () => {
+    try {
+      const stored = localStorage.getItem('e2match_finished');
+      const now = Date.now();
+      if (stored) return JSON.parse(stored).filter((m: Match) => (now - new Date(m.date).getTime()) < 48 * 3600 * 1000);
+    } catch (e) {}
+    return [];
+  };
+  const finishedMatchesRef = useRef<Match[]>(initialFinishedMatches());
   const highlightMatchIdsRef = useRef<Set<string>>(new Set());
   const initialLoadCompleteRef = useRef<boolean>(false);
 
@@ -147,6 +157,7 @@ function App() {
         });
 
         // --- NEW: Preserve finished matches from live API ---
+        let finishedUpdated = false;
         liveMatches.forEach((m: Match) => {
           if (m.status === 'FINISHED') {
             const existingIdx = finishedMatchesRef.current.findIndex(fm => fm.id === m.id);
@@ -155,6 +166,7 @@ function App() {
             } else {
               finishedMatchesRef.current.push(m);
             }
+            finishedUpdated = true;
           }
         });
 
@@ -172,8 +184,19 @@ function App() {
               } else {
                 finishedMatchesRef.current.push(finishedMatch);
               }
+              finishedUpdated = true;
             }
           });
+        }
+
+        // If any match dropped off and finished, save the updated list to local storage
+        if (finishedUpdated) {
+          try {
+            const now = Date.now();
+            const recent = finishedMatchesRef.current.filter(m => (now - new Date(m.date).getTime()) < 48 * 3600 * 1000);
+            finishedMatchesRef.current = recent;
+            localStorage.setItem('e2match_finished', JSON.stringify(recent));
+          } catch (e) {}
         }
 
         // 3. Combine them intelligently

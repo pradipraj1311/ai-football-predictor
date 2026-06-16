@@ -560,7 +560,42 @@ app.post('/api/predict', async (req, res) => {
       ? `Set "suggestedScore" exactly to "${match.homeScore}-${match.awayScore} (FT)". Set "winProbability" to reflect the actual final result (100 for winner, 0 for loser, or 100 for draw).`
       : "";
 
-    const prompt = `You are a premium football tactical analyst. Analyze this match: ${match.homeTeam.name} (${match.homeScore}) vs ${match.awayTeam.name} (${match.awayScore}). Context: ${tacticalContext}. ${postMatchInstructions} Respond strictly in this JSON format: {"winProbability": {"home": 50, "draw": 25, "away": 25}, "suggestedScore": ${isFinished ? `"${match.homeScore}-${match.awayScore} (FT)"` : '"2-1"'}, "analysis": "2 sentences.", "vulnerabilities": {"home": "weakness", "away": "weakness"}, "keyMatchups": [{"battle": "P1 vs P2", "impact": "Crucial", "detail": "why"}], "advisor": {"captain": "Name", "viceCaptain": "Name", "bestXI": [{"name": "P1", "team": "${match.homeTeam.name}", "rating": 8.9, "reason": "why"}]}}`;
+    const prompt = `Act as an elite, world-class football tactician, data scientist, and fantasy sports advisor. You are providing a high-stakes, deeply analytical briefing for the match: ${match.homeTeam.name} (${match.homeScore}) vs ${match.awayTeam.name} (${match.awayScore}). 
+
+Context: ${tacticalContext}. ${postMatchInstructions}
+
+Your analysis MUST be rooted in advanced modern football concepts (e.g., xG, expected threat, half-spaces, high presses, low blocks, transitional play, numerical superiorities). Do not use generic filler. Be highly specific, opinionated, and insightful.
+
+Output STRICTLY in the following JSON schema:
+{
+  "winProbability": {"home": 50, "draw": 25, "away": 25},
+  "suggestedScore": ${isFinished ? `"${match.homeScore}-${match.awayScore} (FT)"` : '"X-Y"'},
+  "analysis": "A dense, 3-sentence tactical breakdown detailing formation strategies, key areas of exploitation, and momentum shifts.",
+  "vulnerabilities": {
+    "home": "Specific tactical flaw (e.g., 'Exposed on the counter when fullbacks overlap').",
+    "away": "Specific tactical flaw."
+  },
+  "keyMatchups": [
+    {
+      "battle": "Player/Role A vs Player/Role B",
+      "impact": "Crucial",
+      "detail": "Why this specific zone or duel dictates the game's tempo."
+    }
+  ],
+  "advisor": {
+    "captain": "Name",
+    "viceCaptain": "Name",
+    "bestXI": [
+      {
+        "name": "Player Name",
+        "team": "${match.homeTeam.name}",
+        "rating": 8.9,
+        "reason": "1-sentence highly technical justification."
+      }
+    ]
+  }
+}
+Do not include markdown blocks, just the raw JSON.`;
 
     const modelsToTry = ['gemini-2.5-flash', 'gemini-3.1-flash-lite', 'gemini-2.0-flash'];
     let parsedData = null;
