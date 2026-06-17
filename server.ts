@@ -104,6 +104,11 @@ async function fetchAndSaveHighlight(matchId: string, homeTeamName: string, away
 
 let matchCache: { data: any; timestamp: number } | null = null;
 const CACHE_DURATION = 5 * 60 * 1000;
+// Singleflight / rate-limit protection for RapidAPI live fetches
+let inFlightLiveFetch: Promise<any> | null = null;
+let lastSofaFetchAllowed = 0; // timestamp in ms when next fetch is allowed after backoff
+const SOFA_BACKOFF_BASE = 30 * 1000; // 30s base backoff on 429
+const SOFA_FETCH_TIMEOUT = 10 * 1000; // 10s fetch timeout
 
 app.get('/api/db-matches', async (_req, res) => {
   const corsHeaders = {
@@ -322,9 +327,53 @@ app.get('/api/live-matches', async (_req, res) => {
   };
 
   try {
-    const sofaResponse = await fetch(sofaUrl, sofaOptions);
-    if (!sofaResponse.ok) throw new Error(`API Error: Status ${sofaResponse.status}`);
-    const rawData = await sofaResponse.json();
+    // If a recent backoff due to 429 is active, serve stale cache immediately
+    const now = Date.now();
+    if (now < lastSofaFetchAllowed) {
+      console.warn('RapidAPI backoff active, serving stale cache until', new Date(lastSofaFetchAllowed).toISOString());
+      if (matchCache && matchCache.data && matchCache.data !== minorLeagueFallback) {
+        return res.status(200).set(corsHeaders).json({ matches: matchCache.data, cached: true, warning: true, backoff: true });
+      }
+    }
+
+    // Singleflight: if another request is already fetching, wait for it instead of firing a new request
+    if (inFlightLiveFetch) {
+      try {
+        await inFlightLiveFetch;
+        if (matchCache) return res.status(200).set(corsHeaders).json({ matches: matchCache.data, cached: true });
+      } catch (e) {
+        // fall through to attempt our own fetch
+      }
+    }
+
+    inFlightLiveFetch = (async () => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), SOFA_FETCH_TIMEOUT);
+      try {
+        const sofaResponse = await fetch(sofaUrl, { ...sofaOptions, signal: controller.signal });
+        clearTimeout(timeout);
+        if (!sofaResponse.ok) {
+          // If we get a 429, schedule backoff before allowing next real fetch
+          if (sofaResponse.status === 429) {
+            const backoffMs = SOFA_BACKOFF_BASE; // simple backoff, could be randomized/exp
+            lastSofaFetchAllowed = Date.now() + backoffMs;
+            throw new Error(`API Error: Status ${sofaResponse.status}`);
+          }
+          throw new Error(`API Error: Status ${sofaResponse.status}`);
+        }
+        const rawData = await sofaResponse.json();
+        return rawData;
+      } finally {
+        clearTimeout(timeout);
+      }
+    })();
+
+    let rawData: any;
+    try {
+      rawData = await inFlightLiveFetch;
+    } finally {
+      inFlightLiveFetch = null;
+    }
 
     // RapidAPI ના ડેટાને એક્સટ્રેક્ટ કરો
     const liveEvents = rawData.events || rawData.data?.events || rawData.data || rawData || [];
