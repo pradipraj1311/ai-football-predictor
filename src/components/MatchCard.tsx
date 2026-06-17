@@ -35,10 +35,10 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, isSelected, onSelec
           )}
           <span className={`text-[10px] font-black uppercase tracking-wider ${match.status === 'LIVE' ? 'text-red-500 animate-pulse' : 'text-slate-500'}`}>
             {match.status === 'LIVE'
-              ? (match.minute !== undefined ? `${match.minute}'` : 'LIVE')
+              ? `${match.minute}'`
               : match.status === 'FINISHED'
                 ? `FT • ${match.date}`
-                : `${match.time && match.time !== 'TBD' ? match.time + ' • ' : ''}${match.date}`}
+                : `${match.time && match.time !== 'null' ? match.time + ' • ' : ''}${match.date}`}
           </span>
         </div>
       </div>

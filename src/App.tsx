@@ -49,7 +49,7 @@ function App() {
     try {
       const stored = localStorage.getItem('e2match_finished');
       const now = Date.now();
-      if (stored) return JSON.parse(stored).filter((m: Match) => (now - new Date(m.date).getTime()) < 48 * 3600 * 1000);
+      if (stored) return JSON.parse(stored).filter((m: Match) => m.id !== 'dummy-live-test' && (now - new Date(m.date).getTime()) < 48 * 3600 * 1000);
     } catch (e) { }
     return [];
   };
@@ -175,7 +175,7 @@ function App() {
         if (isLiveFetchSuccess) {
           const currentLiveIds = new Set(liveMatches.map((m: Match) => m.id));
           previousMatchesRef.current.forEach((prevMatch: Match) => {
-            if (!currentLiveIds.has(prevMatch.id) && prevMatch.status === 'LIVE') {
+            if (!currentLiveIds.has(prevMatch.id) && prevMatch.status === 'LIVE' && prevMatch.id !== 'dummy-live-test') {
               const existingIdx = finishedMatchesRef.current.findIndex(fm => fm.id === prevMatch.id);
               const finishedMatch: Match = { ...prevMatch, status: 'FINISHED', time: 'FT' };
               if (existingIdx >= 0) {

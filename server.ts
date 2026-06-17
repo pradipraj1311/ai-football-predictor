@@ -132,11 +132,17 @@ app.get('/api/db-matches', async (_req, res) => {
         if (fetchedId) ytId = fetchedId;
       }
 
+      let displayTime = row.match_time;
+      // Format "14:00:00" from PostgreSQL cleanly to "14:00"
+      if (typeof displayTime === 'string' && displayTime.match(/^\d{2}:\d{2}(:\d{2})?$/)) {
+        displayTime = displayTime.substring(0, 5);
+      }
+
       return {
         id: row.id,
         competition: row.competition || 'FIFA World Cup 2026',
         dbStatus: isFinished ? 'FINISHED' : 'SCHEDULED', // Send what the database says
-        time: row.match_time,
+        time: displayTime || 'TBD',
         date: new Date(row.match_date).toISOString().split('T')[0],
         youtubeHighlightId: ytId || null,
         homeTeam: {
@@ -501,8 +507,9 @@ app.get('/api/live-matches', async (_req, res) => {
     res.status(200).set(corsHeaders).json({ matches: processedMatches, cached: false });
   } catch (error: any) {
     console.error("RapidAPI Fetch Error:", error.message);
+    matchCache = { data: minorLeagueFallback, timestamp: Date.now() };
     res.status(200).set(corsHeaders).json({
-      matches: [], // એરર આવે તો ડમી મેચને બદલે ખાલી Array મોકલો
+      matches: minorLeagueFallback, // એરર આવે તો પણ ડમી મેચ બતાવો જેથી UI ખાલી ના રહે!
       cached: false,
       warning: true,
       apiErrorDetail: error.message
