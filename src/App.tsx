@@ -50,6 +50,8 @@ function App() {
   const [alerts, setAlerts] = useState<any[]>([]);
   const previousMatchesRef = useRef<Match[]>([]);
 
+  const lastFetchTimeRef = useRef(0);
+
   // Initialize persistent finished matches from LocalStorage (keeps results across page reloads)
   const initialFinishedMatches = () => {
     try {
@@ -94,9 +96,23 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // NEW: Intelligent Data Pipeline (DB + RapidAPI)
+  // NEW & OPTIMIZED: Intelligent Data Pipeline (DB + RapidAPI)
   useEffect(() => {
     const fetchAllMatches = async () => {
+      const now = Date.now();
+
+      // FIX 1: SMART COOLDOWN (Save RapidAPI Calls)
+      // Fetch data every 1 minute (60000ms) only if there are LIVE matches.
+      // If no matches are LIVE (all finished or upcoming), fetch every 3 minutes (180000ms).
+      const hasLiveMatches = previousMatchesRef.current.some((m) => m.status === 'LIVE');
+      const requiredCooldown = hasLiveMatches ? 60000 : 180000;
+
+      if (now - lastFetchTimeRef.current < requiredCooldown) {
+        // Prevent API spam even if the user rapidly switches tabs.
+        return;
+      }
+      lastFetchTimeRef.current = now;
+
       try {
         let dbData = { matches: [] };
         try {
@@ -364,15 +380,28 @@ function App() {
 
         previousMatchesRef.current = liveMatches;
 
-        // Smart Selection Logic
+        // 🚀 FIX 2: STOP AI SPAM (Save Gemini Calls)
+        // Do not update Selected Match if score or time hasn't changed!
         setSelectedMatch(prev => {
           if (!prev) {
-            // Default selection: Try to pick a live match first, if none, pick an upcoming one
             return combinedMatches.find((m: Match) => m.status === 'LIVE') ||
               combinedMatches.find((m: Match) => m.status === 'UPCOMING') ||
               combinedMatches[0];
           }
-          return combinedMatches.find((m: Match) => m.id === prev.id) || prev;
+          const updatedMatch = combinedMatches.find((m: Match) => m.id === prev.id);
+          if (!updatedMatch) return prev;
+
+          // Only update the object if a goal actually occurred or status changed
+          if (
+            prev.status !== updatedMatch.status ||
+            prev.homeScore !== updatedMatch.homeScore ||
+            prev.awayScore !== updatedMatch.awayScore ||
+            prev.time !== updatedMatch.time
+          ) {
+            return updatedMatch;
+          }
+          // Keep the old data to prevent <AIPredictor /> from re-triggering unnecessarily.
+          return prev;
         });
 
       } catch (err) {
@@ -380,21 +409,21 @@ function App() {
       }
     };
 
+    // 🚀 FIX 3: Event Listeners Cleanup
     fetchAllMatches();
-    const interval = setInterval(fetchAllMatches, 60000);
+    // Checks every 10 seconds, but respects the Cooldown (60s/180s) to limit data fetches.
+    const interval = setInterval(fetchAllMatches, 10000);
 
-
-    // Re-fetch instantly when user switches back to the app or browser tab
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') fetchAllMatches();
     };
+    
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleVisibilityChange);
+    // Removed window.focus listener as it fires multiple times unnecessarily on mobile along with visibilitychange.
 
     return () => {
       clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleVisibilityChange);
     };
   }, []);
 
