@@ -109,6 +109,9 @@ let inFlightLiveFetch: Promise<any> | null = null;
 let lastSofaFetchAllowed = 0; // timestamp in ms when next fetch is allowed after backoff
 const SOFA_BACKOFF_BASE = 30 * 1000; // 30s base backoff on 429
 const SOFA_FETCH_TIMEOUT = 10 * 1000; // 10s fetch timeout
+let sofa429Count = 0;
+const SOFA_MAX_BACKOFF = 10 * 60 * 1000; // 10 minutes
+const SOFA_BACKOFF_JITTER = 0.25; // 25% jitter
 
 app.get('/api/db-matches', async (_req, res) => {
   const corsHeaders = {
@@ -353,16 +356,33 @@ app.get('/api/live-matches', async (_req, res) => {
         const sofaResponse = await fetch(sofaUrl, { ...sofaOptions, signal: controller.signal });
         clearTimeout(timeout);
         if (!sofaResponse.ok) {
-          // If we get a 429, schedule backoff before allowing next real fetch
+          // If we get a 429, schedule exponential backoff with jitter
           if (sofaResponse.status === 429) {
-            const backoffMs = SOFA_BACKOFF_BASE; // simple backoff, could be randomized/exp
+            sofa429Count = Math.min(sofa429Count + 1, 30);
+            const exp = Math.pow(2, Math.max(0, sofa429Count - 1));
+            let backoffMs = Math.min(SOFA_BACKOFF_BASE * exp, SOFA_MAX_BACKOFF);
+            // jitter +/- SOFA_BACKOFF_JITTER
+            const jitter = (Math.random() * 2 - 1) * SOFA_BACKOFF_JITTER;
+            backoffMs = Math.floor(backoffMs * (1 + jitter));
             lastSofaFetchAllowed = Date.now() + backoffMs;
+            console.warn(`RapidAPI 429 received — backing off for ${backoffMs}ms (count=${sofa429Count})`);
             throw new Error(`API Error: Status ${sofaResponse.status}`);
           }
+          // For other non-ok statuses, treat as transient but don't increase 429 counter
           throw new Error(`API Error: Status ${sofaResponse.status}`);
         }
+        // Success -> reset 429 counter
+        sofa429Count = 0;
         const rawData = await sofaResponse.json();
         return rawData;
+      } catch (err: any) {
+        if (err && err.name === 'AbortError') {
+          // Timeout — apply a small backoff to avoid immediate retries from many clients
+          const backoffMs = SOFA_BACKOFF_BASE;
+          lastSofaFetchAllowed = Date.now() + backoffMs;
+          console.warn('RapidAPI fetch timed out; applying small backoff', backoffMs);
+        }
+        throw err;
       } finally {
         clearTimeout(timeout);
       }
