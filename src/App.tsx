@@ -125,7 +125,7 @@ function App() {
                 isTimePassed = true;
               }
             }
-          } catch (e) {}
+          } catch (e) { }
 
           // If the match time hasn't passed, keep it as UPCOMING.
           // If it HAS passed, we drop it from here. RapidAPI will handle the LIVE/FINISHED data.
@@ -376,7 +376,20 @@ function App() {
 
     fetchAllMatches();
     const interval = setInterval(fetchAllMatches, 60000);
-    return () => clearInterval(interval);
+
+
+    // Re-fetch instantly when user switches back to the app or browser tab
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') fetchAllMatches();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleVisibilityChange);
+    };
   }, []);
 
   const triggerTestGoal = () => {

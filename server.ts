@@ -189,8 +189,9 @@ app.get('/api/live-matches', async (_req, res) => {
     'Content-Type': 'application/json'
   };
 
-  // Disable caching entirely in development mode so you can see your live changes instantly
-  if (process.env.NODE_ENV === 'production' && matchCache && (Date.now() - matchCache.timestamp < CACHE_DURATION)) {
+  // Strict 60-second cache to give real-time updates while protecting RapidAPI's 1440/day limit
+  const LIVE_CACHE_DURATION = 60 * 1000; 
+  if (matchCache && (Date.now() - matchCache.timestamp < LIVE_CACHE_DURATION)) {
     return res.status(200).set(corsHeaders).json({ matches: matchCache.data, cached: true });
   }
 
