@@ -34,15 +34,10 @@ function App() {
     const selectedCurrent = selectedMatch && matches.find((m) => m.id === selectedMatch.id);
     const selectedIsFinished = selectedCurrent && ['FINISHED', 'FT', 'ENDED', 'CLOSED'].includes(selectedCurrent.status);
 
-    if (activeTab === 'UPCOMING' && hasLiveMatch) {
-      setActiveTab('LIVE');
-      return;
-    }
-
     if (selectedIsFinished && activeTab !== 'FINISHED') {
       setActiveTab('FINISHED');
     }
-  }, [matches, selectedMatch, activeTab]);
+  }, [matches, selectedMatch]);
 
   const [userLocation, setUserLocation] = useState('Global');
   const [sportName, setSportName] = useState('Football');
@@ -109,49 +104,36 @@ function App() {
           console.warn("DB Fetch network error:", e);
         }
 
-        // Determine status on the frontend based on local time (Bulletproof Version)
-        const dbMatches = (dbData.matches || []).map((m: any) => {
-          if (m.dbStatus === 'FINISHED') return { ...m, status: 'FINISHED', time: 'FT' };
-
-          let calculatedStatus = 'UPCOMING';
-          let displayTime = m.time;
-
-          try {
-            // Safely parse "HH:MM"
-            if (m.time && m.time.includes(':')) {
-              const [hours, minutes] = m.time.split(':').map(Number);
-
-              // Create a date object in the USER's local timezone based on the DB date
-              const matchDateObj = new Date(m.date);
-
-              // Define the offset. IST is UTC+5:30 (330 minutes)
-              const istOffsetMinutes = 330;
-              // Get the user's local offset in minutes
-              const localOffsetMinutes = -matchDateObj.getTimezoneOffset();
-
-              // Calculate the difference
-              const offsetDifference = localOffsetMinutes - istOffsetMinutes;
-
-              // Apply the hours/minutes from the database, then adjust for the timezone difference
-              matchDateObj.setHours(hours, minutes + offsetDifference, 0, 0);
-
-              const now = new Date(); // User's current local time
-              const twoHoursInMillis = 120 * 60000;
-
-              // Logic check
-              if (now.getTime() >= matchDateObj.getTime() && now.getTime() < (matchDateObj.getTime() + twoHoursInMillis)) {
-                calculatedStatus = 'LIVE';
-              } else if (now.getTime() >= (matchDateObj.getTime() + twoHoursInMillis)) {
-                calculatedStatus = 'FINISHED';
-                displayTime = 'FT';
-              }
-            }
-          } catch (e) {
-            console.error("Time parsing error for match:", m.id, e);
+        // Determine status on the frontend based on local time
+        const dbMatches = (dbData.matches || []).reduce((acc: any[], m: any) => {
+          if (m.dbStatus === 'FINISHED' || m.dbStatus === 'FT') {
+            acc.push({ ...m, status: 'FINISHED', time: 'FT' });
+            return acc;
           }
 
-          return { ...m, status: calculatedStatus, time: displayTime };
-        });
+          let isTimePassed = false;
+          try {
+            if (m.time && m.time.includes(':')) {
+              const [hours, minutes] = m.time.split(':').map(Number);
+              const matchDateObj = new Date(m.date);
+              const istOffsetMinutes = 330;
+              const localOffsetMinutes = -matchDateObj.getTimezoneOffset();
+              const offsetDifference = localOffsetMinutes - istOffsetMinutes;
+              matchDateObj.setHours(hours, minutes + offsetDifference, 0, 0);
+
+              if (new Date().getTime() >= matchDateObj.getTime()) {
+                isTimePassed = true;
+              }
+            }
+          } catch (e) {}
+
+          // If the match time hasn't passed, keep it as UPCOMING.
+          // If it HAS passed, we drop it from here. RapidAPI will handle the LIVE/FINISHED data.
+          if (!isTimePassed) {
+            acc.push({ ...m, status: 'UPCOMING', time: m.time });
+          }
+          return acc;
+        }, []);
 
         // 2. Fetch from Live API
         const liveRes = await fetch(`/api/live-matches?t=${Date.now()}`);
@@ -277,22 +259,22 @@ function App() {
           return name || 'Other Competitions';
         };
 
-        const isFinishedMatch = (m: Match) =>
-          m.status === 'FINISHED' || m.status === 'FT' || m.status === 'ENDED' || m.status === 'CLOSED';
+        const isFinishedOrLiveMatch = (m: Match) =>
+          m.status === 'FINISHED' || m.status === 'FT' || m.status === 'ENDED' || m.status === 'CLOSED' || m.status === 'LIVE';
 
         const validMatchesToCalculate = combinedMatches.filter((m: Match) => {
-          return isFinishedMatch(m) &&
-            m.homeScore !== undefined &&
-            m.awayScore !== undefined;
+          return isFinishedOrLiveMatch(m) &&
+            m.homeScore !== undefined && m.homeScore !== null &&
+            m.awayScore !== undefined && m.awayScore !== null;
         });
-
-        // Only track standings for these specific tournaments to prevent random temporary tables
-        const TRACKED_TOURNAMENTS = ['FIFA World Cup 2026', 'UEFA Champions League'];
 
         validMatchesToCalculate.forEach((m: Match) => {
           const comp = normalizeCompetitionName(m.competition || 'Other Competitions');
 
-          if (!TRACKED_TOURNAMENTS.includes(comp)) return;
+          // Initialize dynamic group for new or non-FIFA tournaments
+          if (!newDynamicStandings[comp]) {
+            newDynamicStandings[comp] = [{ groupName: 'League Table', entries: [] }];
+          }
 
           const homeScore = Number(m.homeScore) || 0;
           const awayScore = Number(m.awayScore) || 0;
@@ -306,10 +288,11 @@ function App() {
 
           const findOrCreateTeam = (teamName: string, code: string, logo: string) => {
             let foundTeam: any = null;
-            newDynamicStandings[comp].forEach(group => {
+            newDynamicStandings[comp].forEach((group: any) => {
               const t = group.entries.find((e: any) =>
                 e.teamName.toLowerCase().includes(teamName.toLowerCase()) ||
-                teamName.toLowerCase().includes(e.teamName.toLowerCase())
+                teamName.toLowerCase().includes(e.teamName.toLowerCase()) ||
+                (e.code && code && e.code.toLowerCase() === code.toLowerCase())
               );
               if (t) foundTeam = t;
             });
