@@ -167,6 +167,20 @@ function App() {
           const liveData = await liveRes.json();
           liveMatches = liveData.matches || [];
           isLiveFetchSuccess = !liveData.warning;
+
+          // Honor server-side backoff signal to avoid refetch storms
+          // If server indicates backoff, extend the client cooldown
+          try {
+            const BACKOFF_CLIENT_EXTEND = 3 * 60 * 1000; // 3 minutes
+            const CACHED_EXTEND = 60 * 1000; // 1 minute
+            if (liveData.backoff) {
+              lastFetchTimeRef.current = Date.now() + BACKOFF_CLIENT_EXTEND;
+              console.warn('Server requested backoff; extending client cooldown by 3 minutes');
+            } else if (liveData.cached) {
+              // If server served a cached response, avoid immediate re-checks
+              lastFetchTimeRef.current = Date.now() + CACHED_EXTEND;
+            }
+          } catch (e) { /* no-op */ }
         }
 
         // Preserve highlight IDs from the DB for finished matches that also appear in the live feed
@@ -419,7 +433,7 @@ function App() {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') fetchAllMatches();
     };
-    
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
     // Removed window.focus listener as it fires multiple times unnecessarily on mobile along with visibilitychange.
 
@@ -684,10 +698,10 @@ function App() {
                   ))}
                 </div>
                 <StandingsGrid standings={dynamicStandings[selectedTournament] || []} />
-          </div>
-          ) : activeTab === 'POLL' ? (
-            <div id="fan-poll" className="scroll-mt-24 animate-fade-in-up">
-              <FanPoll />
+              </div>
+            ) : activeTab === 'POLL' ? (
+              <div id="fan-poll" className="scroll-mt-24 animate-fade-in-up">
+                <FanPoll />
               </div>
             ) : activeTab === 'TEAMS' && selectedTeam ? (
               <div className="flex flex-col gap-6">
