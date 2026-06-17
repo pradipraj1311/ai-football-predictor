@@ -8,8 +8,14 @@ const app = express();
 app.use(express.json());
 const PORT = 3000;
 
+// 🚀 FIX 1: Suppress Postgres SSL Connection Warnings
+let dbUrl = process.env.DB_URL || '';
+if (dbUrl && dbUrl.includes('sslmode=require') && !dbUrl.includes('uselibpqcompat=true')) {
+  dbUrl = dbUrl.replace('sslmode=require', 'uselibpqcompat=true&sslmode=require');
+}
+
 const pool = new Pool({
-  connectionString: process.env.DB_URL,
+  connectionString: dbUrl,
   ssl: { rejectUnauthorized: false },
   max: 1,
   idleTimeoutMillis: 30000,
@@ -190,9 +196,15 @@ app.get('/api/live-matches', async (_req, res) => {
   };
 
   // Strict 60-second cache to give real-time updates while protecting RapidAPI's 1440/day limit
-  const LIVE_CACHE_DURATION = 60 * 1000; 
+  const LIVE_CACHE_DURATION = 60 * 1000;
   if (matchCache && (Date.now() - matchCache.timestamp < LIVE_CACHE_DURATION)) {
     return res.status(200).set(corsHeaders).json({ matches: matchCache.data, cached: true });
+  }
+
+  // 🚀 FIX 2: Prevent Cache Stampede (Thundering Herd)
+  // Temporarily reset the timestamp so concurrent requests immediately use the old cache while we fetch new data in the background.
+  if (matchCache) {
+    matchCache.timestamp = Date.now();
   }
 
   // Dummy match fallback to prove the UI works when no real matches are happening
@@ -392,67 +404,6 @@ app.get('/api/live-matches', async (_req, res) => {
       try {
         client = await pool.connect();
 
-        // For each processed match, try to find a matching DB row by date and team codes.
-        for (const pm of processedMatches) {
-          try {
-            const homeCode = (pm.homeTeam && pm.homeTeam.code) ? String(pm.homeTeam.code).toUpperCase() : null;
-            const awayCode = (pm.awayTeam && pm.awayTeam.code) ? String(pm.awayTeam.code).toUpperCase() : null;
-            const matchDate = pm.date; // YYYY-MM-DD as produced above
-
-            if (!homeCode || !awayCode || !matchDate) continue;
-
-            const findSql = `
-              SELECT id, home_team, away_team, home_score, away_score
-              FROM world_cup_matches
-              WHERE match_date = $1
-                AND (
-                  (home_team->> 'code' = $2 AND away_team->> 'code' = $3)
-                  OR (home_team->> 'code' = $3 AND away_team->> 'code' = $2)
-                )
-              LIMIT 1
-            `;
-
-            const found = await client.query(findSql, [matchDate, homeCode, awayCode]);
-            if (found && found.rows && found.rows.length > 0) {
-              const row = found.rows[0];
-              // If we found a DB row, overwrite the public id so the frontend and DB use the same id
-              pm.id = row.id;
-
-              // If the live feed reports a final score, persist it to DB if it's missing or different
-              if (pm.status === 'FINISHED' && pm.homeScore != null && pm.awayScore != null) {
-                const dbHome = row.home_score;
-                const dbAway = row.away_score;
-                if (dbHome !== pm.homeScore || dbAway !== pm.awayScore) {
-                  try {
-                    await client.query(
-                      `UPDATE world_cup_matches SET home_score = $1, away_score = $2, db_status = 'FINISHED' WHERE id = $3`,
-                      [pm.homeScore, pm.awayScore, row.id]
-                    );
-                    console.log(`Persisted final score for match ${row.id}: ${pm.homeScore}-${pm.awayScore}`);
-                  } catch (upErr: any) {
-                    console.warn('Failed to persist live score to DB for', row.id, upErr?.message || upErr);
-                  }
-                }
-              }
-            }
-          } catch (innerErr: any) {
-            console.warn('DB mapping error for live match:', innerErr?.message || innerErr);
-            continue;
-          }
-        }
-      } catch (err: any) {
-        console.warn('Could not connect to DB for live-match mapping:', err?.message || err);
-      } finally {
-        try { if (client) client.release(); } catch (e) { /* ignore */ }
-      }
-    }
-
-    // --- Attempt to map live matches to DB rows and persist final scores ---
-    if (process.env.DB_URL) {
-      let client: any = null;
-      try {
-        client = await pool.connect();
-
         for (const pm of processedMatches) {
           try {
             const homeCode = (pm.homeTeam && pm.homeTeam.code) ? String(pm.homeTeam.code).toUpperCase() : null;
@@ -508,6 +459,14 @@ app.get('/api/live-matches', async (_req, res) => {
     res.status(200).set(corsHeaders).json({ matches: processedMatches, cached: false });
   } catch (error: any) {
     console.error("RapidAPI Fetch Error:", error.message);
+
+    // 🚀 FIX 3: Serve Stale Cache on Rate Limit (429)
+    // Do NOT overwrite real matches with dummy fallback data if we get rate limited!
+    if (matchCache && matchCache.data !== minorLeagueFallback && matchCache.data.length > 0) {
+      console.log("Serving stale cache due to RapidAPI error.");
+      return res.status(200).set(corsHeaders).json({ matches: matchCache.data, cached: true, warning: true, apiErrorDetail: error.message });
+    }
+
     matchCache = { data: minorLeagueFallback, timestamp: Date.now() };
     res.status(200).set(corsHeaders).json({
       matches: minorLeagueFallback, // એરર આવે તો પણ ડમી મેચ બતાવો જેથી UI ખાલી ના રહે!
