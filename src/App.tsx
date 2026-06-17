@@ -27,6 +27,23 @@ function App() {
   const [showQuiz, setShowQuiz] = useState(false);
   const [resultFilter, setResultFilter] = useState('');
 
+  useEffect(() => {
+    if (!matches.length) return;
+
+    const hasLiveMatch = matches.some((m) => m.status === 'LIVE');
+    const selectedCurrent = selectedMatch && matches.find((m) => m.id === selectedMatch.id);
+    const selectedIsFinished = selectedCurrent && ['FINISHED', 'FT', 'ENDED', 'CLOSED'].includes(selectedCurrent.status);
+
+    if (activeTab === 'UPCOMING' && hasLiveMatch) {
+      setActiveTab('LIVE');
+      return;
+    }
+
+    if (selectedIsFinished && activeTab !== 'FINISHED') {
+      setActiveTab('FINISHED');
+    }
+  }, [matches, selectedMatch, activeTab]);
+
   const [userLocation, setUserLocation] = useState('Global');
   const [sportName, setSportName] = useState('Football');
   const [alerts, setAlerts] = useState<any[]>([]);
@@ -38,7 +55,7 @@ function App() {
       const stored = localStorage.getItem('e2match_finished');
       const now = Date.now();
       if (stored) return JSON.parse(stored).filter((m: Match) => (now - new Date(m.date).getTime()) < 48 * 3600 * 1000);
-    } catch (e) {}
+    } catch (e) { }
     return [];
   };
   const finishedMatchesRef = useRef<Match[]>(initialFinishedMatches());
@@ -196,7 +213,7 @@ function App() {
             const recent = finishedMatchesRef.current.filter(m => (now - new Date(m.date).getTime()) < 48 * 3600 * 1000);
             finishedMatchesRef.current = recent;
             localStorage.setItem('e2match_finished', JSON.stringify(recent));
-          } catch (e) {}
+          } catch (e) { }
         }
 
         // 3. Combine them intelligently
@@ -260,9 +277,11 @@ function App() {
           return name || 'Other Competitions';
         };
 
+        const isFinishedMatch = (m: Match) =>
+          m.status === 'FINISHED' || m.status === 'FT' || m.status === 'ENDED' || m.status === 'CLOSED';
+
         const validMatchesToCalculate = combinedMatches.filter((m: Match) => {
-          const isFinishedMatch = m.status === 'FINISHED' || m.status === 'FT' || m.status === 'ENDED' || m.status === 'CLOSED';
-          return (isFinishedMatch || m.status === 'LIVE') &&
+          return isFinishedMatch(m) &&
             m.homeScore !== undefined &&
             m.awayScore !== undefined;
         });
@@ -272,7 +291,7 @@ function App() {
 
         validMatchesToCalculate.forEach((m: Match) => {
           const comp = normalizeCompetitionName(m.competition || 'Other Competitions');
-          
+
           if (!TRACKED_TOURNAMENTS.includes(comp)) return;
 
           const homeScore = Number(m.homeScore) || 0;
@@ -699,25 +718,25 @@ function App() {
                       </a>
                     </div>
                     <div className="p-5 flex justify-center">
-                      <a 
+                      <a
                         href={`https://www.youtube.com/watch?v=${(selectedMatch as any).youtubeHighlightId}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="w-full max-w-3xl aspect-video rounded-2xl overflow-hidden border border-white/10 shadow-lg relative bg-black/50 group block cursor-pointer"
                       >
-                        <img 
-                          src={`https://img.youtube.com/vi/${(selectedMatch as any).youtubeHighlightId}/maxresdefault.jpg`} 
-                          alt="Match Highlight Thumbnail" 
+                        <img
+                          src={`https://img.youtube.com/vi/${(selectedMatch as any).youtubeHighlightId}/maxresdefault.jpg`}
+                          alt="Match Highlight Thumbnail"
                           className="w-full h-full object-cover opacity-70 group-hover:opacity-90 transition-opacity duration-300"
                           onError={(e) => { (e.target as HTMLImageElement).src = `https://img.youtube.com/vi/${(selectedMatch as any).youtubeHighlightId}/hqdefault.jpg`; }}
                         />
                         <div className="absolute inset-0 flex flex-col items-center justify-center transition-all duration-300">
-                           <div className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(220,38,38,0.6)] group-hover:scale-110 transition-transform duration-300">
-                             <Play className="w-8 h-8 text-white fill-white ml-1" />
-                           </div>
-                           <span className="mt-4 bg-black/80 text-white text-xs font-bold px-4 py-1.5 rounded-full border border-white/20 backdrop-blur-md shadow-lg text-center">
-                             Official FIFA Highlight • Opens in YouTube
-                           </span>
+                          <div className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(220,38,38,0.6)] group-hover:scale-110 transition-transform duration-300">
+                            <Play className="w-8 h-8 text-white fill-white ml-1" />
+                          </div>
+                          <span className="mt-4 bg-black/80 text-white text-xs font-bold px-4 py-1.5 rounded-full border border-white/20 backdrop-blur-md shadow-lg text-center">
+                            Official FIFA Highlight • Opens in YouTube
+                          </span>
                         </div>
                       </a>
                     </div>
