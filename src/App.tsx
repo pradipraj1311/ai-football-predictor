@@ -12,7 +12,7 @@ import { H2HMatrix } from './components/H2HMatrix';
 import { PrivacyPolicy } from './components/PrivacyPolicy';
 import { TermsOfService } from './components/TermsOfService';
 import { GLOBAL_TEAMS_DIRECTORY, WORLD_CUP_STANDINGS, FootballTeamProfile } from './data';
-import { BrainCircuit, Shield, Calendar, History, Globe, Coins, CloudRain, Thermometer, BellRing, Target, ListOrdered, Activity, Trophy, Play, Youtube } from 'lucide-react';
+import { BrainCircuit, Shield, Calendar, History, Globe, Coins, CloudRain, Thermometer, BellRing, Target, ListOrdered, Activity, Trophy, Play, Youtube, Swords, Clock } from 'lucide-react';
 
 function App() {
 
@@ -21,7 +21,8 @@ function App() {
   const [dynamicStandings, setDynamicStandings] = useState<Record<string, any>>({ 'FIFA World Cup 2026': WORLD_CUP_STANDINGS });
   const [selectedTournament, setSelectedTournament] = useState<string>('FIFA World Cup 2026');
   const [selectedTeam, setSelectedTeam] = useState<FootballTeamProfile | null>(null);
-  const [activeTab, setActiveTab] = useState<'LIVE' | 'UPCOMING' | 'FINISHED' | 'TEAMS' | 'STANDINGS'>('LIVE');
+  const [activeTab, setActiveTab] = useState<'LIVE' | 'UPCOMING' | 'FINISHED' | 'TEAMS' | 'STANDINGS' | 'POLL'>('LIVE');
+  const [activeAnalysisTab, setActiveAnalysisTab] = useState<'ANALYSIS' | 'TELEMETRY' | 'H2H' | 'HIGHLIGHTS'>('ANALYSIS');
   const [timeLeft, setTimeLeft] = useState({ d: 0, h: 0, m: 0, s: 0 });
   const [showProps, setShowProps] = useState(false);
   const [showQuiz, setShowQuiz] = useState(false);
@@ -33,6 +34,11 @@ function App() {
     const hasLiveMatch = matches.some((m) => m.status === 'LIVE');
     const selectedCurrent = selectedMatch && matches.find((m) => m.id === selectedMatch.id);
     const selectedIsFinished = selectedCurrent && ['FINISHED', 'FT', 'ENDED', 'CLOSED'].includes(selectedCurrent.status);
+
+    // If a selected match is no longer live, but was, switch to H2H or another relevant tab
+    if (activeAnalysisTab === 'TELEMETRY' && selectedCurrent && selectedCurrent.status !== 'LIVE') {
+      setActiveAnalysisTab('H2H');
+    }
 
     if (selectedIsFinished && activeTab !== 'FINISHED') {
       setActiveTab('FINISHED');
@@ -489,12 +495,13 @@ function App() {
       ) : (
         <main className="max-w-[1600px] mx-auto p-4 md:p-6 pb-24 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start relative min-h-screen">
           <div className="lg:col-span-4 xl:col-span-3 flex flex-col gap-4 sticky top-24">
-            <div className="bg-[#0B1121] border border-white/5 p-1.5 rounded-xl grid grid-cols-5 gap-1 text-center">
+            <div className="bg-[#0B1121] border border-white/5 p-1.5 rounded-xl grid grid-cols-6 gap-1 text-center">
               <button onClick={() => { setActiveTab('LIVE'); setSelectedTeam(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'LIVE' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}><span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span> Live</button>
               <button onClick={() => { setActiveTab('UPCOMING'); setSelectedTeam(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'UPCOMING' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><Calendar className="w-3 h-3" /> Upcoming</button>
               <button onClick={() => { setActiveTab('FINISHED'); setSelectedTeam(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'FINISHED' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><History className="w-3 h-3" /> Results</button>
               <button onClick={() => { setActiveTab('STANDINGS'); setSelectedTeam(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'STANDINGS' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><ListOrdered className="w-3 h-3" /> Table</button>
               <button onClick={() => { setActiveTab('TEAMS'); setSelectedTeam(GLOBAL_TEAMS_DIRECTORY[0]); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'TEAMS' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><Shield className="w-3 h-3" /> Teams</button>
+              <button onClick={() => { setActiveTab('POLL'); setSelectedTeam(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'POLL' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><Trophy className="w-3 h-3" /> Poll</button>
             </div>
 
             <div className="flex flex-col gap-2 max-h-[600px] overflow-y-auto pr-1">
@@ -599,6 +606,12 @@ function App() {
                           isSelected={selectedMatch?.id === match.id && !selectedTeam}
                           onSelect={() => {
                             setSelectedMatch(match);
+                            // Reset to the main analysis tab when a new match is selected
+                            if (match.status === 'LIVE') {
+                              setActiveAnalysisTab('TELEMETRY');
+                            } else {
+                              setActiveAnalysisTab('ANALYSIS');
+                            }
                             setSelectedTeam(null);
                             // 🚨 ADDED: Smooth scroll for mobile users
                             setTimeout(() => {
@@ -640,6 +653,10 @@ function App() {
                   ))}
                 </div>
                 <StandingsGrid standings={dynamicStandings[selectedTournament] || []} />
+          </div>
+          ) : activeTab === 'POLL' ? (
+            <div id="fan-poll" className="scroll-mt-24 animate-fade-in-up">
+              <FanPoll />
               </div>
             ) : activeTab === 'TEAMS' && selectedTeam ? (
               <div className="flex flex-col gap-6">
@@ -695,62 +712,69 @@ function App() {
                   </div>
                 </div>
 
-                {/* --- NEW: USER-FRIENDLY YOUTUBE HIGHLIGHTS --- */}
-                {(selectedMatch as any).youtubeHighlightId && selectedMatch.status === 'FINISHED' && (
-                  <div id="match-highlights" className="bg-[#0B1121] border border-white/5 rounded-3xl overflow-hidden shadow-2xl mt-4 animate-fade-in-up">
-                    <div className="md:flex md:items-center md:justify-between bg-gradient-to-r from-red-900/20 via-[#0B1121] to-[#0B1121] p-5 border-b border-white/5 gap-4">
-                      <div>
-                        <p className="text-[10px] font-black uppercase tracking-widest text-red-400 flex items-center gap-1.5"><Youtube className="w-3.5 h-3.5" /> Match highlights</p>
-                        <h3 className="mt-2 text-lg font-black text-white">Official YouTube highlight</h3>
-                      </div>
-                      <a
-                        href={`https://www.youtube.com/watch?v=${(selectedMatch as any).youtubeHighlightId}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 rounded-full border border-red-500/30 bg-red-500/20 px-4 py-2.5 text-xs font-black uppercase tracking-widest text-red-100 hover:bg-red-500/30 hover:scale-105 transition-all shadow-[0_0_15px_rgba(239,68,68,0.2)]"
-                      >
-                        <Play className="w-4 h-4 text-white fill-white" />
-                        Watch on YouTube
-                      </a>
-                    </div>
-                    <div className="p-5 flex justify-center">
-                      <a
-                        href={`https://www.youtube.com/watch?v=${(selectedMatch as any).youtubeHighlightId}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="w-full max-w-3xl aspect-video rounded-2xl overflow-hidden border border-white/10 shadow-lg relative bg-black/50 group block cursor-pointer"
-                      >
-                        <img
-                          src={`https://img.youtube.com/vi/${(selectedMatch as any).youtubeHighlightId}/maxresdefault.jpg`}
-                          alt="Match Highlight Thumbnail"
-                          className="w-full h-full object-cover opacity-70 group-hover:opacity-90 transition-opacity duration-300"
-                          onError={(e) => { (e.target as HTMLImageElement).src = `https://img.youtube.com/vi/${(selectedMatch as any).youtubeHighlightId}/hqdefault.jpg`; }}
-                        />
-                        <div className="absolute inset-0 flex flex-col items-center justify-center transition-all duration-300">
-                          <div className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(220,38,38,0.6)] group-hover:scale-110 transition-transform duration-300">
-                            <Play className="w-8 h-8 text-white fill-white ml-1" />
-                          </div>
-                          <span className="mt-4 bg-black/80 text-white text-xs font-bold px-4 py-1.5 rounded-full border border-white/20 backdrop-blur-md shadow-lg text-center">
-                            Official FIFA Highlight • Opens in YouTube
-                          </span>
-                        </div>
-                      </a>
-                    </div>
-                  </div>
-                )}
+                {/* --- NEW: Tabbed Analysis Section --- */}
+                <div className="bg-[#0B1121] border border-white/5 p-1.5 rounded-xl grid grid-cols-4 gap-1 text-center">
+                  <button onClick={() => setActiveAnalysisTab('ANALYSIS')} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${activeAnalysisTab === 'ANALYSIS' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}><BrainCircuit className="w-3.5 h-3.5" /> Analysis</button>
+                  <button onClick={() => setActiveAnalysisTab('TELEMETRY')} disabled={selectedMatch.status !== 'LIVE'} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${activeAnalysisTab === 'TELEMETRY' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'} disabled:opacity-30 disabled:cursor-not-allowed`}><Activity className="w-3.5 h-3.5" /> Telemetry</button>
+                  <button onClick={() => setActiveAnalysisTab('H2H')} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${activeAnalysisTab === 'H2H' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}><Swords className="w-3.5 h-3.5" /> H2H</button>
+                  <button onClick={() => setActiveAnalysisTab('HIGHLIGHTS')} disabled={!selectedMatch.youtubeHighlightId} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${activeAnalysisTab === 'HIGHLIGHTS' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'} disabled:opacity-30 disabled:cursor-not-allowed`}><Youtube className="w-3.5 h-3.5" /> Highlights</button>
+                </div>
 
-                {selectedMatch.status === 'FINISHED' && !(selectedMatch as any).youtubeHighlightId && (
-                  <div className="bg-[#0B1121] border border-white/5 rounded-2xl p-4 text-slate-300 text-sm mt-6">
+                <div className="animate-fade-in-up">
+                  {activeAnalysisTab === 'ANALYSIS' && <AIPredictor match={selectedMatch} />}
+
+                  {activeAnalysisTab === 'TELEMETRY' && selectedMatch.status === 'LIVE' && <LiveTelemetry match={selectedMatch} />}
+
+                  {activeAnalysisTab === 'H2H' && <H2HMatrix match={selectedMatch} />}
+
+                  {activeAnalysisTab === 'HIGHLIGHTS' && selectedMatch.youtubeHighlightId && (
+                    <div id="match-highlights" className="bg-[#0B1121] border border-white/5 rounded-3xl overflow-hidden shadow-2xl mt-4">
+                      <div className="md:flex md:items-center md:justify-between bg-gradient-to-r from-red-900/20 via-[#0B1121] to-[#0B1121] p-5 border-b border-white/5 gap-4">
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-widest text-red-400 flex items-center gap-1.5"><Youtube className="w-3.5 h-3.5" /> Match highlights</p>
+                          <h3 className="mt-2 text-lg font-black text-white">Official YouTube highlight</h3>
+                        </div>
+                        <a
+                          href={`https://www.youtube.com/watch?v=${selectedMatch.youtubeHighlightId}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 rounded-full border border-red-500/30 bg-red-500/20 px-4 py-2.5 text-xs font-black uppercase tracking-widest text-red-100 hover:bg-red-500/30 hover:scale-105 transition-all shadow-[0_0_15px_rgba(239,68,68,0.2)]"
+                        >
+                          <Play className="w-4 h-4 text-white fill-white" />
+                          Watch on YouTube
+                        </a>
+                      </div>
+                      <div className="p-5 flex justify-center">
+                        <a
+                          href={`https://www.youtube.com/watch?v=${selectedMatch.youtubeHighlightId}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full max-w-3xl aspect-video rounded-2xl overflow-hidden border border-white/10 shadow-lg relative bg-black/50 group block cursor-pointer"
+                        >
+                          <img
+                            src={`https://img.youtube.com/vi/${selectedMatch.youtubeHighlightId}/maxresdefault.jpg`}
+                            alt="Match Highlight Thumbnail"
+                            className="w-full h-full object-cover opacity-70 group-hover:opacity-90 transition-opacity duration-300"
+                            onError={(e) => { (e.target as HTMLImageElement).src = `https://img.youtube.com/vi/${selectedMatch.youtubeHighlightId}/hqdefault.jpg`; }}
+                          />
+                          <div className="absolute inset-0 flex flex-col items-center justify-center transition-all duration-300">
+                            <div className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(220,38,38,0.6)] group-hover:scale-110 transition-transform duration-300">
+                              <Play className="w-8 h-8 text-white fill-white ml-1" />
+                            </div>
+                            <span className="mt-4 bg-black/80 text-white text-xs font-bold px-4 py-1.5 rounded-full border border-white/20 backdrop-blur-md shadow-lg text-center">
+                              Official FIFA Highlight • Opens in YouTube
+                            </span>
+                          </div>
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {selectedMatch.status === 'FINISHED' && !selectedMatch.youtubeHighlightId && activeAnalysisTab === 'HIGHLIGHTS' && (
+                  <div className="bg-[#0B1121] border border-white/5 rounded-2xl p-4 text-slate-300 text-sm mt-6 animate-fade-in-up">
                     We’re still checking for match highlights. If the game just finished, please refresh in a moment while we find the latest YouTube clip.
                   </div>
-                )}
-
-                <AIPredictor match={selectedMatch} />
-                {(selectedMatch.status === 'LIVE' || selectedMatch.status === 'FINISHED') && (
-                  <>
-                    <LiveTelemetry match={selectedMatch} />
-                    <H2HMatrix match={selectedMatch} />
-                  </>
                 )}
               </>
             ) : (
@@ -760,11 +784,6 @@ function App() {
                 <span className="text-xs font-black text-indigo-400 bg-indigo-500/10 px-3 py-1 rounded-full uppercase tracking-widest border border-indigo-500/20 mb-6 inline-block">Watching from {userLocation} ({sportName})</span>
               </div>
             )}
-
-            {/* Global Fan Poll Section with ID for smooth scrolling */}
-            <div id="fan-poll" className="mt-8 scroll-mt-24">
-              <FanPoll />
-            </div>
           </div>
         </main>
       )}
