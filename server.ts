@@ -112,6 +112,7 @@ const SOFA_FETCH_TIMEOUT = 10 * 1000; // 10s fetch timeout
 let sofa429Count = 0;
 const SOFA_MAX_BACKOFF = 10 * 60 * 1000; // 10 minutes
 const SOFA_BACKOFF_JITTER = 0.25; // 25% jitter
+const SOFA_MIN_INTERVAL = 60 * 1000; // Minimum interval between real RapidAPI fetches per process
 
 app.get('/api/db-matches', async (_req, res) => {
   const corsHeaders = {
@@ -371,8 +372,11 @@ app.get('/api/live-matches', async (_req, res) => {
           // For other non-ok statuses, treat as transient but don't increase 429 counter
           throw new Error(`API Error: Status ${sofaResponse.status}`);
         }
-        // Success -> reset 429 counter
+        // Success -> reset 429 counter and set a short minimum interval to throttle
         sofa429Count = 0;
+        // Prevent immediate subsequent real fetches from this process
+        lastSofaFetchAllowed = Date.now() + SOFA_MIN_INTERVAL;
+        console.log('RapidAPI fetch succeeded; setting per-process minimum interval of', SOFA_MIN_INTERVAL, 'ms');
         const rawData = await sofaResponse.json();
         return rawData;
       } catch (err: any) {
