@@ -116,7 +116,8 @@ function App() {
       try {
         let dbData = { matches: [] };
         try {
-          const dbRes = await fetch(`/api/db-matches?t=${Date.now()}`);
+          // 🚀 FIX: Removed ?t=${Date.now()} cache-buster so Vercel CDN can block spam traffic
+          const dbRes = await fetch(`/api/db-matches`);
           if (dbRes.ok) {
             dbData = await dbRes.json();
           } else {
@@ -158,7 +159,8 @@ function App() {
         }, []);
 
         // 2. Fetch from Live API
-        const liveRes = await fetch(`/api/live-matches?t=${Date.now()}`);
+        // 🚀 FIX: Removed ?t=${Date.now()} cache-buster to protect RapidAPI rate limits
+        const liveRes = await fetch(`/api/live-matches`);
         let liveMatches: any[] = [];
         let isLiveFetchSuccess = false;
         if (liveRes.ok) {

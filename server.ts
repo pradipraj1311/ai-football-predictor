@@ -108,7 +108,8 @@ const CACHE_DURATION = 5 * 60 * 1000;
 app.get('/api/db-matches', async (_req, res) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
-    'Content-Type': 'application/json'
+    'Content-Type': 'application/json',
+    'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' // 🚀 FIX: Vercel Edge Caching
   };
   // If DB is not configured, return empty matches quickly to avoid repeated timeouts
   if (!process.env.DB_URL) {
@@ -192,7 +193,8 @@ app.get('/api/db-matches', async (_req, res) => {
 app.get('/api/live-matches', async (_req, res) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
-    'Content-Type': 'application/json'
+    'Content-Type': 'application/json',
+    'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' // 🚀 FIX: Prevent RapidAPI exhaustion globally
   };
 
   // Strict 60-second cache to give real-time updates while protecting RapidAPI's 1440/day limit
