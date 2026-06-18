@@ -53,6 +53,7 @@ function App() {
   const lastFetchTimeRef = useRef(0);
   const lastDbFetchTimeRef = useRef(0);
   const dbMatchesRef = useRef<Match[]>([]);
+  const combinedMatchesRef = useRef<Match[]>([]); // Tracks all matches for smart cooldown
 
   // Initialize persistent finished matches from LocalStorage (keeps results across page reloads)
   const initialFinishedMatches = () => {
@@ -103,15 +104,59 @@ function App() {
     const fetchAllMatches = async () => {
       const now = Date.now();
 
-      // FIX 1: SMART COOLDOWN (Save RapidAPI Calls)
-      // Fetch data every 1 minute (60000ms) only if there are LIVE matches.
-      // If no matches are LIVE (all finished or upcoming), fetch every 3 minutes (180000ms).
-      const hasLiveMatches = previousMatchesRef.current.some((m) => m.status === 'LIVE');
-      const requiredCooldown = hasLiveMatches ? 60000 : 180000;
+      // --- 🧠 SENIOR DEV OPTIMIZATION: Ultra-Smart Progressive Cooldown ---
+      // Dynamically adjust API frequency based exactly on when the next match starts.
+      let requiredCooldown = 0; 
+      const allMatches = combinedMatchesRef.current;
+
+      if (allMatches.length > 0) {
+        const hasLive = allMatches.some((m) => m.status === 'LIVE');
+        if (hasLive) {
+          requiredCooldown = 60 * 1000; // 1 min (Match is LIVE, fast updates)
+        } else {
+          const upcomingMatches = allMatches.filter((m) => m.status === 'UPCOMING');
+          if (upcomingMatches.length > 0) {
+            let minTimeUntilMatchMs = Infinity;
+            
+            upcomingMatches.forEach((m) => {
+              try {
+                if (m.date && m.time && m.time.includes(':')) {
+                  const [hours, minutes] = m.time.split(':').map(Number);
+                  const matchDateObj = new Date(m.date);
+                  // Accurate local time calculation
+                  const istOffsetMinutes = 330;
+                  const localOffsetMinutes = -matchDateObj.getTimezoneOffset();
+                  matchDateObj.setHours(hours, minutes + (localOffsetMinutes - istOffsetMinutes), 0, 0);
+                  
+                  const timeUntil = matchDateObj.getTime() - now;
+                  if (timeUntil < minTimeUntilMatchMs) {
+                    minTimeUntilMatchMs = timeUntil;
+                  }
+                }
+              } catch (e) {}
+            });
+
+            if (minTimeUntilMatchMs !== Infinity) {
+              if (minTimeUntilMatchMs > 3 * 60 * 60 * 1000) {
+                requiredCooldown = 60 * 60 * 1000; // 1 hr (Next match is > 3 hours away)
+              } else if (minTimeUntilMatchMs > 60 * 60 * 1000) {
+                requiredCooldown = 15 * 60 * 1000; // 15 mins (Next match > 1 hour away)
+              } else if (minTimeUntilMatchMs > 15 * 60 * 1000) {
+                requiredCooldown = 5 * 60 * 1000; // 5 mins (Next match > 15 mins away)
+              } else {
+                requiredCooldown = 2 * 60 * 1000; // 2 mins (Match is starting anytime now!)
+              }
+            } else {
+              requiredCooldown = 10 * 60 * 1000; // 10 mins fallback
+            }
+          } else {
+             requiredCooldown = 60 * 60 * 1000; // 1 hr (Day is over, no live, no upcoming)
+          }
+        }
+      }
 
       if (now - lastFetchTimeRef.current < requiredCooldown) {
-        // Prevent API spam even if the user rapidly switches tabs.
-        return;
+        return; // Skip fetch entirely, preserve quotas!
       }
       lastFetchTimeRef.current = now;
 
@@ -251,7 +296,8 @@ function App() {
 
         const combinedMatches = [...liveMatches, ...persistentFinishedMatches, ...nonLiveDbMatches];
 
-        // State Update
+        // State & Ref Update
+        combinedMatchesRef.current = combinedMatches;
         setMatches(combinedMatches);
 
         // --- FIXED: Highlight discovery alert flood ---

@@ -109,8 +109,9 @@ const CACHE_DURATION = 5 * 60 * 1000;
 let inFlightLiveFetch: Promise<any> | null = null;
 let lastSofaFetchAllowed = 0; // timestamp in ms when next fetch is allowed after backoff
 const SOFA_BACKOFF_BASE = 30 * 1000; // 30s base backoff on 429
-const SOFA_FETCH_TIMEOUT = 10 * 1000; // 10s fetch timeout
+const SOFA_FETCH_TIMEOUT = 5 * 1000; // 5s fetch timeout (Reduced slightly so we can safely retry 4 keys within Vercel's limit)
 let sofa429Count = 0;
+let currentSofaKeyIndex = 0; // NEW: Keeps track of which RapidAPI key to use
 const SOFA_MAX_BACKOFF = 10 * 60 * 1000; // 10 minutes
 const SOFA_BACKOFF_JITTER = 0.25; // 25% jitter
 const SOFA_MIN_INTERVAL = 60 * 1000; // Minimum interval between real RapidAPI fetches per process
@@ -270,13 +271,6 @@ app.get('/api/live-matches', async (_req, res) => {
   }];
 
   const sofaUrl = 'https://sofascore6.p.rapidapi.com/api/sofascore/v1/match/live?sport_slug=football';
-  const sofaOptions = {
-    method: 'GET',
-    headers: {
-      'X-RapidAPI-Key': process.env.RAPID_API_KEY || '',
-      'X-RapidAPI-Host': 'sofascore6.p.rapidapi.com'
-    }
-  };
 
   const extractScore = (score: any) => {
     if (score == null) return undefined;
@@ -411,54 +405,90 @@ app.get('/api/live-matches', async (_req, res) => {
     }
 
     inFlightLiveFetch = (async () => {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), SOFA_FETCH_TIMEOUT);
-      try {
-        const sofaResponse = await fetch(sofaUrl, { ...sofaOptions, signal: controller.signal });
-        clearTimeout(timeout);
-        if (!sofaResponse.ok) {
-          // If we get a 429, schedule exponential backoff with jitter
-          if (sofaResponse.status === 429) {
-            sofa429Count = Math.min(sofa429Count + 1, 30);
-            const exp = Math.pow(2, Math.max(0, sofa429Count - 1));
-            let backoffMs = Math.min(SOFA_BACKOFF_BASE * exp, SOFA_MAX_BACKOFF);
-            // jitter +/- SOFA_BACKOFF_JITTER
-            const jitter = (Math.random() * 2 - 1) * SOFA_BACKOFF_JITTER;
-            backoffMs = Math.floor(backoffMs * (1 + jitter));
-            lastSofaFetchAllowed = Date.now() + backoffMs;
-            // --- NEW: Set global backoff in Redis ---
-            if (hasRedis()) {
-              try {
-                // Set the backoff time, with an expiry a bit longer than the backoff itself
-                await setCache(backoffKey, { until: lastSofaFetchAllowed }, Math.ceil(backoffMs / 1000) + 60);
-              } catch (e) {
-                console.warn('Failed to set Redis backoff key', e);
-              }
-            }
-            console.warn(`RapidAPI 429 received — backing off for ${backoffMs}ms (count=${sofa429Count})`);
-            throw new Error(`API Error: Status ${sofaResponse.status}`);
-          }
-          // For other non-ok statuses, treat as transient but don't increase 429 counter
-          throw new Error(`API Error: Status ${sofaResponse.status}`);
-        }
-        // Success -> reset 429 counter and set a short minimum interval to throttle
-        sofa429Count = 0;
-        // Prevent immediate subsequent real fetches from this process
-        lastSofaFetchAllowed = Date.now() + SOFA_MIN_INTERVAL;
-        console.log('RapidAPI fetch succeeded; setting per-process minimum interval of', SOFA_MIN_INTERVAL, 'ms');
-        const rawData = await sofaResponse.json();
-        return rawData;
-      } catch (err: any) {
-        if (err && err.name === 'AbortError') {
-          // Timeout — apply a small backoff to avoid immediate retries from many clients
-          const backoffMs = SOFA_BACKOFF_BASE;
-          lastSofaFetchAllowed = Date.now() + backoffMs;
-          console.warn('RapidAPI fetch timed out; applying small backoff', backoffMs);
-        }
-        throw err;
-      } finally {
-        clearTimeout(timeout);
+      const keys = (process.env.RAPID_API_KEY || '').split(',').map(k => k.trim()).filter(Boolean);
+      if (keys.length === 0) {
+        throw new Error('No RAPID_API_KEY configured.');
       }
+
+      let attempt = 0;
+      let sofaResponse: Response | null = null;
+      let lastError: any = null;
+
+      // Loop over keys to provide fallback and load-balancing
+      while (attempt < keys.length) {
+        const keyToUse = keys[currentSofaKeyIndex];
+        const sofaOptions = {
+          method: 'GET',
+          headers: {
+            'X-RapidAPI-Key': keyToUse,
+            'X-RapidAPI-Host': 'sofascore6.p.rapidapi.com'
+          }
+        };
+
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), SOFA_FETCH_TIMEOUT);
+
+        try {
+          sofaResponse = await fetch(sofaUrl, { ...sofaOptions, signal: controller.signal });
+          clearTimeout(timeout);
+
+          if (sofaResponse.ok) {
+            break; // Success! Break out of the retry loop
+          }
+
+          if (sofaResponse.status === 429 || sofaResponse.status === 403) {
+            console.warn(`RapidAPI Key #${currentSofaKeyIndex + 1} returned ${sofaResponse.status}. Rotating to next key...`);
+            currentSofaKeyIndex = (currentSofaKeyIndex + 1) % keys.length;
+            attempt++;
+            continue; // Try the next key
+          }
+
+          throw new Error(`API Error: Status ${sofaResponse.status}`);
+        } catch (err: any) {
+          clearTimeout(timeout);
+          if (err && err.name === 'AbortError') {
+            console.warn(`RapidAPI Key #${currentSofaKeyIndex + 1} timed out. Rotating to next key...`);
+            currentSofaKeyIndex = (currentSofaKeyIndex + 1) % keys.length;
+            attempt++;
+            lastError = err;
+            continue; // Try next key on timeout
+          }
+          // For non-timeout errors, throw immediately
+          throw err;
+        }
+      }
+
+      // If we exhausted all keys and still don't have a successful response
+      if (!sofaResponse || !sofaResponse.ok) {
+        const is429 = sofaResponse && sofaResponse.status === 429;
+        if (is429 || (lastError && lastError.name === 'AbortError')) {
+          sofa429Count = Math.min(sofa429Count + 1, 30);
+          const exp = Math.pow(2, Math.max(0, sofa429Count - 1));
+          let backoffMs = Math.min(SOFA_BACKOFF_BASE * exp, SOFA_MAX_BACKOFF);
+          const jitter = (Math.random() * 2 - 1) * SOFA_BACKOFF_JITTER;
+          backoffMs = Math.floor(backoffMs * (1 + jitter));
+          lastSofaFetchAllowed = Date.now() + backoffMs;
+
+          if (hasRedis()) {
+            try {
+              await setCache(backoffKey, { until: lastSofaFetchAllowed }, Math.ceil(backoffMs / 1000) + 60);
+            } catch (e) {
+              console.warn('Failed to set Redis backoff key', e);
+            }
+          }
+          console.warn(`All RapidAPI keys exhausted. Backing off for ${backoffMs}ms (count=${sofa429Count})`);
+          throw new Error(is429 ? `API Error: Status 429 (All keys exhausted)` : `API Error: Fetch Timeout (All keys)`);
+        }
+        throw new Error(`API Error: Status ${sofaResponse?.status || 'Unknown'}`);
+      }
+
+      // Success -> reset 429 counter, move to next key for next request (Load Balancing), and set throttle
+      sofa429Count = 0;
+      currentSofaKeyIndex = (currentSofaKeyIndex + 1) % keys.length;
+      lastSofaFetchAllowed = Date.now() + SOFA_MIN_INTERVAL;
+      console.log(`RapidAPI fetch succeeded; Load balancing to next key for next request. Interval: ${SOFA_MIN_INTERVAL}ms`);
+      const rawData = await sofaResponse.json();
+      return rawData;
     })();
 
     let rawData: any;
