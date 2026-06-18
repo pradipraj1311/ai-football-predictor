@@ -2,7 +2,7 @@ import express from 'express';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import { Pool } from 'pg';
-import { getCache, setCache, hasRedis } from './redisCache';
+import { getCache, setCache, hasRedis } from './redisCache.js';
 
 dotenv.config();
 const app = express();
