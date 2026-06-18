@@ -237,7 +237,7 @@ app.get('/api/live-matches', async (_req, res) => {
   const STALE_WHILE_REVALIDATE_WINDOW = 5 * 60 * 1000; // Serve up to 5 min old data while refreshing
   const redisKey = 'live-matches:v1';
   const backoffKey = 'live-matches:backoff-until';
-  
+
   let responseSent = false;
 
   try {
@@ -631,7 +631,7 @@ app.get('/api/live-matches', async (_req, res) => {
             const normalizedDbAway = normalizeTeamName(dbMatch.away_team?.name);
 
             return (normalizedLiveHome === normalizedDbHome && normalizedLiveAway === normalizedDbAway) ||
-                   (normalizedLiveHome === normalizedDbAway && normalizedLiveAway === normalizedDbHome);
+              (normalizedLiveHome === normalizedDbAway && normalizedLiveAway === normalizedDbHome);
           });
 
           if (foundDbMatch) {
@@ -689,6 +689,29 @@ app.get('/api/live-matches', async (_req, res) => {
         apiErrorDetail: error.message
       });
     }
+  }
+});
+
+app.post('/api/login', async (req, res) => {
+  const { username, password } = req.body;
+
+  const adminUser = process.env.ADMIN_USERNAME;
+  const adminPass = process.env.ADMIN_PASSWORD;
+
+  if (!adminUser || !adminPass) {
+    console.error('Admin credentials are not set in environment variables.');
+    return res.status(500).json({ message: 'Server configuration error.' });
+  }
+
+  // IMPORTANT: In a real-world, high-security app, use a constant-time comparison
+  // library like `scmp` to prevent timing attacks. For this internal tool, direct
+  // comparison is acceptable.
+  const isValid = username === adminUser && password === adminPass;
+
+  if (isValid) {
+    res.status(200).json({ success: true });
+  } else {
+    res.status(401).json({ success: false, message: 'Invalid credentials' });
   }
 });
 

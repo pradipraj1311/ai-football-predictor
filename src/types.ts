@@ -56,6 +56,7 @@ export interface StandingsEntry {
   lose: number;
   goalsFor: number;
   goalsAgainst: number;
+  gd: number | string;
   points: number;
 }
 

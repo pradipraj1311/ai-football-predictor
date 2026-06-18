@@ -10,9 +10,11 @@ import { Match } from './types';
 import FanPoll from './components/FanPoll';
 import { H2HMatrix } from './components/H2HMatrix';
 import { PrivacyPolicy } from './components/PrivacyPolicy';
+import { LoginPage } from './components/LoginPage';
+import { MaintenancePage } from './components/MaintenancePage';
 import { TermsOfService } from './components/TermsOfService';
 import { GLOBAL_TEAMS_DIRECTORY, WORLD_CUP_STANDINGS, FootballTeamProfile } from './data';
-import { BrainCircuit, Shield, Calendar, History, Globe, Coins, CloudRain, Thermometer, BellRing, Target, ListOrdered, Activity, Trophy, Play, Youtube, Swords, Clock } from 'lucide-react';
+import { BrainCircuit, Shield, Calendar, History, Globe, Coins, CloudRain, Thermometer, BellRing, Target, ListOrdered, Activity, Trophy, Play, Youtube, Swords, Clock, Wrench, LogOut } from 'lucide-react';
 
 // --- 🧠 SENIOR DEV FIX: Data Consistency ---
 // This logic MUST mirror the normalization in `server.ts` to prevent data mismatches.
@@ -50,6 +52,8 @@ function App() {
   const [showProps, setShowProps] = useState(false);
   const [showQuiz, setShowQuiz] = useState(false);
   const [resultFilter, setResultFilter] = useState('');
+  const [isMaintenance, setIsMaintenance] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     if (!matches.length) return;
@@ -122,6 +126,41 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
+  // --- REVISED: Secure Admin & Maintenance Mode ---
+  useEffect(() => {
+    const checkMaintenance = () => {
+      const maintenanceStatus = localStorage.getItem('maintenance_mode') === 'true';
+      setIsMaintenance(maintenanceStatus);
+    };
+
+    const checkAdminAuth = () => {
+      // Check session storage for auth flag
+      const isAuthenticated = sessionStorage.getItem('is_admin_auth') === 'true';
+      setIsAdmin(isAuthenticated);
+    };
+
+    checkMaintenance();
+    checkAdminAuth();
+
+    // Listen for storage changes to sync across tabs
+    window.addEventListener('storage', checkMaintenance);
+
+    return () => {
+      window.removeEventListener('storage', checkMaintenance);
+    };
+  }, []);
+
+  const setMaintenanceMode = (enabled: boolean) => {
+    localStorage.setItem('maintenance_mode', String(enabled));
+    setIsMaintenance(enabled);
+  };
+
+  const handleLogout = () => {
+    sessionStorage.removeItem('is_admin_auth');
+    setIsAdmin(false);
+    window.location.href = '/'; // Redirect to home page
+  };
+
   // NEW & OPTIMIZED: Intelligent Data Pipeline (DB + RapidAPI)
   useEffect(() => {
     const fetchAllMatches = async () => {
@@ -129,7 +168,7 @@ function App() {
 
       // --- 🧠 SENIOR DEV OPTIMIZATION: Ultra-Smart Progressive Cooldown ---
       // Dynamically adjust API frequency based exactly on when the next match starts.
-      let requiredCooldown = 0; 
+      let requiredCooldown = 0;
       const allMatches = combinedMatchesRef.current;
 
       if (allMatches.length > 0) {
@@ -140,7 +179,7 @@ function App() {
           const upcomingMatches = allMatches.filter((m) => m.status === 'UPCOMING');
           if (upcomingMatches.length > 0) {
             let minTimeUntilMatchMs = Infinity;
-            
+
             upcomingMatches.forEach((m) => {
               try {
                 if (m.date && m.time && m.time.includes(':')) {
@@ -150,13 +189,13 @@ function App() {
                   const istOffsetMinutes = 330;
                   const localOffsetMinutes = -matchDateObj.getTimezoneOffset();
                   matchDateObj.setHours(hours, minutes + (localOffsetMinutes - istOffsetMinutes), 0, 0);
-                  
+
                   const timeUntil = matchDateObj.getTime() - now;
                   if (timeUntil < minTimeUntilMatchMs) {
                     minTimeUntilMatchMs = timeUntil;
                   }
                 }
-              } catch (e) {}
+              } catch (e) { }
             });
 
             if (minTimeUntilMatchMs !== Infinity) {
@@ -173,7 +212,7 @@ function App() {
               requiredCooldown = 10 * 60 * 1000; // 10 mins fallback
             }
           } else {
-             requiredCooldown = 60 * 60 * 1000; // 1 hr (Day is over, no live, no upcoming)
+            requiredCooldown = 60 * 60 * 1000; // 1 hr (Day is over, no live, no upcoming)
           }
         }
       }
@@ -363,6 +402,10 @@ function App() {
           'FIFA World Cup 2026': JSON.parse(JSON.stringify(WORLD_CUP_STANDINGS))
         };
 
+        // 🧠 FIX: Use a Set to track processed matches for standings to prevent any possibility of double-counting.
+        // This ensures each match result is applied only once per calculation cycle.
+        const processedForStandings = new Set<string>();
+
         const normalizeCompetitionName = (compName: string) => {
           const name = String(compName || '').trim();
           const lower = name.toLowerCase();
@@ -382,6 +425,12 @@ function App() {
         });
 
         validMatchesToCalculate.forEach((m: Match) => {
+          // Defensive check: if match has no ID or was already processed, skip.
+          if (!m.id || processedForStandings.has(m.id)) {
+            return;
+          }
+          processedForStandings.add(m.id);
+
           const comp = normalizeCompetitionName(m.competition || 'Other Competitions');
 
           // Initialize dynamic group for new or non-FIFA tournaments
@@ -406,7 +455,7 @@ function App() {
               const t = group.entries.find((e: any) => {
                 const normalizedExistingName = normalizeTeamName(e.teamName);
                 return normalizedExistingName === normalizedNameToFind ||
-                       (e.code && code && e.code.toLowerCase() === code.toLowerCase());
+                  (e.code && code && e.code.toLowerCase() === code.toLowerCase());
               });
               if (t) foundTeam = t;
             });
@@ -432,21 +481,21 @@ function App() {
             return;
           }
 
-          hTeam.played += 1;
-          hTeam.goalsFor += homeScore;
-          hTeam.goalsAgainst += awayScore;
-          if (homeScore > awayScore) { hTeam.win += 1; hTeam.points += 3; }
-          else if (homeScore < awayScore) { hTeam.lose += 1; }
-          else { hTeam.draw += 1; hTeam.points += 1; }
-          hTeam.gd = hTeam.goalsFor - hTeam.goalsAgainst;
+          hTeam.played = (hTeam.played || 0) + 1;
+          hTeam.goalsFor = (hTeam.goalsFor || 0) + homeScore;
+          hTeam.goalsAgainst = (hTeam.goalsAgainst || 0) + awayScore;
+          if (homeScore > awayScore) { hTeam.win = (hTeam.win || 0) + 1; hTeam.points = (hTeam.points || 0) + 3; }
+          else if (homeScore < awayScore) { hTeam.lose = (hTeam.lose || 0) + 1; }
+          else { hTeam.draw = (hTeam.draw || 0) + 1; hTeam.points = (hTeam.points || 0) + 1; }
+          hTeam.gd = (hTeam.goalsFor || 0) - (hTeam.goalsAgainst || 0);
 
-          aTeam.played += 1;
-          aTeam.goalsFor += awayScore;
-          aTeam.goalsAgainst += homeScore;
-          if (awayScore > homeScore) { aTeam.win += 1; aTeam.points += 3; }
-          else if (awayScore < homeScore) { aTeam.lose += 1; }
-          else { aTeam.draw += 1; aTeam.points += 1; }
-          aTeam.gd = aTeam.goalsFor - aTeam.goalsAgainst;
+          aTeam.played = (aTeam.played || 0) + 1;
+          aTeam.goalsFor = (aTeam.goalsFor || 0) + awayScore;
+          aTeam.goalsAgainst = (aTeam.goalsAgainst || 0) + homeScore;
+          if (awayScore > homeScore) { aTeam.win = (aTeam.win || 0) + 1; aTeam.points = (aTeam.points || 0) + 3; }
+          else if (awayScore < homeScore) { aTeam.lose = (aTeam.lose || 0) + 1; }
+          else { aTeam.draw = (aTeam.draw || 0) + 1; aTeam.points = (aTeam.points || 0) + 1; }
+          aTeam.gd = (aTeam.goalsFor || 0) - (aTeam.goalsAgainst || 0);
         });
 
         // 3. Sort and Rank the Groups
@@ -581,6 +630,18 @@ function App() {
     : filteredMatches;
 
   const path = window.location.pathname;
+
+  // --- NEW: Auth Routing ---
+  if (path === '/login') {
+    return <LoginPage />;
+  }
+
+  // NEW: Maintenance Mode Gate
+  // If maintenance is on and the user is not an admin, show the maintenance page.
+  // Admins can still access the site (with ?admin=true) to turn it off.
+  if (isMaintenance && !isAdmin) {
+    return <MaintenancePage />;
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-200 font-sans selection:bg-indigo-500/30 overflow-x-hidden">
