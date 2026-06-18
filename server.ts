@@ -116,6 +116,29 @@ const SOFA_MAX_BACKOFF = 10 * 60 * 1000; // 10 minutes
 const SOFA_BACKOFF_JITTER = 0.25; // 25% jitter
 const SOFA_MIN_INTERVAL = 60 * 1000; // Minimum interval between real RapidAPI fetches per process
 
+// --- NEW: Robust Team Name Normalization for Data Consistency ---
+const teamNameAliases: { [key: string]: string } = {
+  'dr congo': 'congo dr',
+  'ivory coast': "côte d'ivoire",
+  'usa': 'united states',
+  'eng': 'england',
+  'ksa': 'saudi arabia',
+  'uae': 'united arab emirates',
+  'south korea': 'korea republic',
+  'korea': 'korea republic',
+};
+
+function normalizeTeamName(name: string): string {
+  if (!name) return '';
+  let normalized = name.toLowerCase().trim();
+
+  // Apply aliases for known variations
+  if (teamNameAliases[normalized]) {
+    normalized = teamNameAliases[normalized];
+  }
+  return normalized.replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+}
+
 app.get('/api/db-matches', async (_req, res) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -575,58 +598,66 @@ app.get('/api/live-matches', async (_req, res) => {
 
     // --- Attempt to map live matches to DB rows and persist final scores ---
     if (process.env.DB_URL) {
-      let client: any = null;
+      let dbClient: any = null;
       try {
-        client = await pool.connect();
+        dbClient = await pool.connect();
+
+        // --- OPTIMIZATION: Fetch all potentially relevant matches from DB at once ---
+        const today = new Date();
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+
+        const candidateMatchesResult = await dbClient.query(
+          `SELECT id, home_team, away_team, home_score, away_score, db_status, match_date 
+           FROM world_cup_matches 
+           WHERE match_date = ANY($1::date[])`,
+          [[today.toISOString().split('T')[0], tomorrow.toISOString().split('T')[0], yesterday.toISOString().split('T')[0]]]
+        );
+        const dbMatches = candidateMatchesResult.rows;
 
         for (const pm of processedMatches) {
-          try {
-            const homeCode = (pm.homeTeam && pm.homeTeam.code) ? String(pm.homeTeam.code).toUpperCase() : null;
-            const awayCode = (pm.awayTeam && pm.awayTeam.code) ? String(pm.awayTeam.code).toUpperCase() : null;
-            const matchDate = pm.date;
-            if (!homeCode || !awayCode || !matchDate) continue;
+          const normalizedLiveHome = normalizeTeamName(pm.homeTeam?.name);
+          const normalizedLiveAway = normalizeTeamName(pm.awayTeam?.name);
 
-            const findSql = `
-              SELECT id, home_team, away_team, home_score, away_score, db_status
-              FROM world_cup_matches
-              WHERE match_date = $1
-                AND (
-                  (home_team->> 'code' = $2 AND away_team->> 'code' = $3)
-                  OR (home_team->> 'code' = $3 AND away_team->> 'code' = $2)
-                )
-              LIMIT 1
-            `;
+          const foundDbMatch = dbMatches.find(dbMatch => {
+            if (new Date(dbMatch.match_date).toDateString() !== new Date(pm.date).toDateString()) {
+              return false;
+            }
 
-            const found = await client.query(findSql, [matchDate, homeCode, awayCode]);
-            if (found && found.rows && found.rows.length > 0) {
-              const row = found.rows[0];
-              pm.id = row.id;
+            const normalizedDbHome = normalizeTeamName(dbMatch.home_team?.name);
+            const normalizedDbAway = normalizeTeamName(dbMatch.away_team?.name);
 
-              if (pm.status === 'FINISHED' && pm.homeScore != null && pm.awayScore != null) {
-                const dbHome = row.home_score;
-                const dbAway = row.away_score;
-                if (dbHome !== pm.homeScore || dbAway !== pm.awayScore || row.db_status !== 'FINISHED') {
-                  try {
-                    await client.query(
-                      `UPDATE world_cup_matches SET home_score = $1, away_score = $2, db_status = 'FINISHED' WHERE id = $3`,
-                      [pm.homeScore, pm.awayScore, row.id]
-                    );
-                    console.log(`Persisted final score for match ${row.id}: ${pm.homeScore}-${pm.awayScore}`);
-                  } catch (upErr: any) {
-                    console.warn('Failed to persist live score to DB for', row.id, upErr?.message || upErr);
-                  }
+            return (normalizedLiveHome === normalizedDbHome && normalizedLiveAway === normalizedDbAway) ||
+                   (normalizedLiveHome === normalizedDbAway && normalizedLiveAway === normalizedDbHome);
+          });
+
+          if (foundDbMatch) {
+            pm.id = foundDbMatch.id; // CRITICAL: Align the ID for frontend state management
+
+            // Persist final score if match is finished and score differs
+            if (pm.status === 'FINISHED' && pm.homeScore != null && pm.awayScore != null) {
+              const dbHomeScore = foundDbMatch.home_score;
+              const dbAwayScore = foundDbMatch.away_score;
+              if (dbHomeScore !== pm.homeScore || dbAwayScore !== pm.awayScore || foundDbMatch.db_status !== 'FINISHED') {
+                try {
+                  await dbClient.query(
+                    `UPDATE world_cup_matches SET home_score = $1, away_score = $2, db_status = 'FINISHED' WHERE id = $3`,
+                    [pm.homeScore, pm.awayScore, foundDbMatch.id]
+                  );
+                  console.log(`Persisted final score for match ${foundDbMatch.id}: ${pm.homeScore}-${pm.awayScore}`);
+                } catch (upErr: any) {
+                  console.warn('Failed to persist live score to DB for', foundDbMatch.id, upErr?.message || upErr);
                 }
               }
             }
-          } catch (innerErr: any) {
-            console.warn('DB mapping error for live match:', innerErr?.message || innerErr);
-            continue;
           }
         }
       } catch (err: any) {
         console.warn('Could not connect to DB for live-match mapping:', err?.message || err);
       } finally {
-        try { if (client) client.release(); } catch (e) { /* ignore */ }
+        try { if (dbClient) dbClient.release(); } catch (e) { /* ignore */ }
       }
     }
 
