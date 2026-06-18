@@ -209,18 +209,36 @@ app.get('/api/live-matches', async (_req, res) => {
 
   // Strict 60-second cache to give real-time updates while protecting RapidAPI's 1440/day limit
   const LIVE_CACHE_DURATION = 60 * 1000;
+  const STALE_WHILE_REVALIDATE_WINDOW = 5 * 60 * 1000; // Serve up to 5 min old data while refreshing
   const redisKey = 'live-matches:v1';
+  const backoffKey = 'live-matches:backoff-until';
+  
+  let responseSent = false;
+
   try {
     const r = await getCache(redisKey);
-    if (r && r.timestamp && (Date.now() - r.timestamp < LIVE_CACHE_DURATION)) {
-      return res.status(200).set(corsHeaders).json({ matches: r.data, cached: true, source: 'redis' });
+    if (r && r.timestamp) {
+      const age = Date.now() - r.timestamp;
+      if (age < LIVE_CACHE_DURATION) {
+        return res.status(200).set(corsHeaders).json({ matches: r.data, cached: true, source: 'redis' });
+      } else if (age < STALE_WHILE_REVALIDATE_WINDOW) {
+        // Stale-While-Revalidate: send stale data immediately, but don't return so fetch continues
+        res.status(200).set(corsHeaders).json({ matches: r.data, cached: true, warning: false, source: 'redis-stale' });
+        responseSent = true;
+      }
     }
   } catch (e) {
     console.warn('Failed to read Redis cache for live-matches', e);
   }
 
-  if (matchCache && (Date.now() - matchCache.timestamp < LIVE_CACHE_DURATION)) {
-    return res.status(200).set(corsHeaders).json({ matches: matchCache.data, cached: true, source: 'memory' });
+  if (!responseSent && matchCache) {
+    const age = Date.now() - matchCache.timestamp;
+    if (age < LIVE_CACHE_DURATION) {
+      return res.status(200).set(corsHeaders).json({ matches: matchCache.data, cached: true, source: 'memory' });
+    } else if (age < STALE_WHILE_REVALIDATE_WINDOW) {
+      res.status(200).set(corsHeaders).json({ matches: matchCache.data, cached: true, warning: false, source: 'memory-stale' });
+      responseSent = true;
+    }
   }
 
   // 🚀 FIX 2: Prevent Cache Stampede (Thundering Herd)
@@ -344,18 +362,40 @@ app.get('/api/live-matches', async (_req, res) => {
   try {
     // If a recent backoff due to 429 is active, serve stale cache immediately
     const now = Date.now();
-    if (now < lastSofaFetchAllowed) {
-      console.warn('RapidAPI backoff active, serving stale cache until', new Date(lastSofaFetchAllowed).toISOString());
+
+    // --- NEW: Check for global Redis backoff ---
+    let globalBackoffUntil = 0;
+    if (hasRedis()) {
       try {
-        const r = await getCache(redisKey);
-        if (r && r.data && r.data !== minorLeagueFallback) {
-          return res.status(200).set(corsHeaders).json({ matches: r.data, cached: true, warning: true, backoff: true, source: 'redis' });
+        const backoffData = await getCache(backoffKey);
+        if (backoffData && backoffData.until) {
+          globalBackoffUntil = backoffData.until;
         }
       } catch (e) {
-        console.warn('Redis read failed while serving backoff cache', e);
+        console.warn('Failed to read Redis backoff key', e);
       }
-      if (matchCache && matchCache.data && matchCache.data !== minorLeagueFallback) {
-        return res.status(200).set(corsHeaders).json({ matches: matchCache.data, cached: true, warning: true, backoff: true, source: 'memory' });
+    }
+
+    const effectiveBackoffUntil = Math.max(lastSofaFetchAllowed, globalBackoffUntil);
+
+    if (now < effectiveBackoffUntil) {
+      const reason = (globalBackoffUntil > lastSofaFetchAllowed) ? 'Global (Redis)' : 'Local';
+      console.warn(`RapidAPI backoff active (${reason}), serving stale cache until`, new Date(effectiveBackoffUntil).toISOString());
+      if (!responseSent) {
+        try {
+          const r = await getCache(redisKey);
+          if (r && r.data && r.data !== minorLeagueFallback) {
+            return res.status(200).set(corsHeaders).json({ matches: r.data, cached: true, warning: true, backoff: true, source: 'redis' });
+          }
+        } catch (e) {
+          console.warn('Redis read failed while serving backoff cache', e);
+        }
+        if (matchCache && matchCache.data && matchCache.data !== minorLeagueFallback) {
+          return res.status(200).set(corsHeaders).json({ matches: matchCache.data, cached: true, warning: true, backoff: true, source: 'memory' });
+        }
+        return res.status(200).set(corsHeaders).json({ matches: minorLeagueFallback, cached: false, warning: true, backoff: true, apiErrorDetail: 'RapidAPI is in a cool-down period. Serving fallback data.' });
+      } else {
+        return; // Already sent SWR response
       }
     }
 
@@ -363,7 +403,8 @@ app.get('/api/live-matches', async (_req, res) => {
     if (inFlightLiveFetch) {
       try {
         await inFlightLiveFetch;
-        if (matchCache) return res.status(200).set(corsHeaders).json({ matches: matchCache.data, cached: true });
+        if (!responseSent && matchCache) return res.status(200).set(corsHeaders).json({ matches: matchCache.data, cached: true });
+        if (responseSent) return;
       } catch (e) {
         // fall through to attempt our own fetch
       }
@@ -385,6 +426,15 @@ app.get('/api/live-matches', async (_req, res) => {
             const jitter = (Math.random() * 2 - 1) * SOFA_BACKOFF_JITTER;
             backoffMs = Math.floor(backoffMs * (1 + jitter));
             lastSofaFetchAllowed = Date.now() + backoffMs;
+            // --- NEW: Set global backoff in Redis ---
+            if (hasRedis()) {
+              try {
+                // Set the backoff time, with an expiry a bit longer than the backoff itself
+                await setCache(backoffKey, { until: lastSofaFetchAllowed }, Math.ceil(backoffMs / 1000) + 60);
+              } catch (e) {
+                console.warn('Failed to set Redis backoff key', e);
+              }
+            }
             console.warn(`RapidAPI 429 received — backing off for ${backoffMs}ms (count=${sofa429Count})`);
             throw new Error(`API Error: Status ${sofaResponse.status}`);
           }
@@ -430,7 +480,8 @@ app.get('/api/live-matches', async (_req, res) => {
 
     if (footballEvents.length === 0) {
       matchCache = { data: minorLeagueFallback, timestamp: Date.now() };
-      return res.status(200).set(corsHeaders).json({ matches: minorLeagueFallback, cached: false });
+      if (!responseSent) return res.status(200).set(corsHeaders).json({ matches: minorLeagueFallback, cached: false });
+      return;
     }
 
     let processedMatches = footballEvents.slice(0, 15).map((event: any) => {
@@ -555,24 +606,27 @@ app.get('/api/live-matches', async (_req, res) => {
     } catch (e) {
       console.warn('Failed to write live-matches to Redis', e);
     }
-    res.status(200).set(corsHeaders).json({ matches: processedMatches, cached: false });
+    if (!responseSent) {
+      res.status(200).set(corsHeaders).json({ matches: processedMatches, cached: false });
+    }
   } catch (error: any) {
     console.error("RapidAPI Fetch Error:", error.message);
 
-    // 🚀 FIX 3: Serve Stale Cache on Rate Limit (429)
-    // Do NOT overwrite real matches with dummy fallback data if we get rate limited!
-    if (matchCache && matchCache.data !== minorLeagueFallback && matchCache.data.length > 0) {
-      console.log("Serving stale cache due to RapidAPI error.");
-      return res.status(200).set(corsHeaders).json({ matches: matchCache.data, cached: true, warning: true, apiErrorDetail: error.message });
-    }
+    if (!responseSent) {
+      // Do NOT overwrite real matches with dummy fallback data if we get rate limited!
+      if (matchCache && matchCache.data !== minorLeagueFallback && matchCache.data.length > 0) {
+        console.log("Serving stale cache due to RapidAPI error.");
+        return res.status(200).set(corsHeaders).json({ matches: matchCache.data, cached: true, warning: true, apiErrorDetail: error.message });
+      }
 
-    matchCache = { data: minorLeagueFallback, timestamp: Date.now() };
-    res.status(200).set(corsHeaders).json({
-      matches: minorLeagueFallback, // એરર આવે તો પણ ડમી મેચ બતાવો જેથી UI ખાલી ના રહે!
-      cached: false,
-      warning: true,
-      apiErrorDetail: error.message
-    });
+      matchCache = { data: minorLeagueFallback, timestamp: Date.now() };
+      res.status(200).set(corsHeaders).json({
+        matches: minorLeagueFallback,
+        cached: false,
+        warning: true,
+        apiErrorDetail: error.message
+      });
+    }
   }
 });
 

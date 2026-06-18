@@ -51,6 +51,8 @@ function App() {
   const previousMatchesRef = useRef<Match[]>([]);
 
   const lastFetchTimeRef = useRef(0);
+  const lastDbFetchTimeRef = useRef(0);
+  const dbMatchesRef = useRef<Match[]>([]);
 
   // Initialize persistent finished matches from LocalStorage (keeps results across page reloads)
   const initialFinishedMatches = () => {
@@ -114,21 +116,25 @@ function App() {
       lastFetchTimeRef.current = now;
 
       try {
-        let dbData = { matches: [] };
-        try {
-          // 🚀 FIX: Removed ?t=${Date.now()} cache-buster so Vercel CDN can block spam traffic
-          const dbRes = await fetch(`/api/db-matches`);
-          if (dbRes.ok) {
-            dbData = await dbRes.json();
-          } else {
-            console.warn(`DB Fetch failed with status: ${dbRes.status}`);
+        // --- OPTIMIZATION: Cache DB Matches for 10 minutes to reduce Vercel Postgres reads ---
+        const DB_COOLDOWN = 10 * 60 * 1000;
+        if (now - lastDbFetchTimeRef.current > DB_COOLDOWN) {
+          try {
+            const dbRes = await fetch(`/api/db-matches`);
+            if (dbRes.ok) {
+              const dbData = await dbRes.json();
+              dbMatchesRef.current = dbData.matches || [];
+              lastDbFetchTimeRef.current = now;
+            } else {
+              console.warn(`DB Fetch failed with status: ${dbRes.status}`);
+            }
+          } catch (e) {
+            console.warn("DB Fetch network error:", e);
           }
-        } catch (e) {
-          console.warn("DB Fetch network error:", e);
         }
 
         // Determine status on the frontend based on local time
-        const dbMatches = (dbData.matches || []).reduce((acc: any[], m: any) => {
+        const dbMatches = (dbMatchesRef.current).reduce((acc: any[], m: any) => {
           if (m.dbStatus === 'FINISHED' || m.dbStatus === 'FT') {
             acc.push({ ...m, status: 'FINISHED', time: 'FT' });
             return acc;
