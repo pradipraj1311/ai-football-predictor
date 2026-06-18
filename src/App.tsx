@@ -14,6 +14,29 @@ import { TermsOfService } from './components/TermsOfService';
 import { GLOBAL_TEAMS_DIRECTORY, WORLD_CUP_STANDINGS, FootballTeamProfile } from './data';
 import { BrainCircuit, Shield, Calendar, History, Globe, Coins, CloudRain, Thermometer, BellRing, Target, ListOrdered, Activity, Trophy, Play, Youtube, Swords, Clock } from 'lucide-react';
 
+// --- 🧠 SENIOR DEV FIX: Data Consistency ---
+// This logic MUST mirror the normalization in `server.ts` to prevent data mismatches.
+const teamNameAliases: { [key: string]: string } = {
+  'dr congo': 'congo dr',
+  "côte d'ivoire": 'ivory coast',
+  'usa': 'united states',
+  'eng': 'england',
+  'ksa': 'saudi arabia',
+  'uae': 'united arab emirates',
+  'south korea': 'korea republic',
+  'korea': 'korea republic',
+  'ir iran': 'iran',
+};
+
+function normalizeTeamName(name: string): string {
+  if (!name) return '';
+  let normalized = name.toLowerCase().trim();
+  if (teamNameAliases[normalized]) {
+    normalized = teamNameAliases[normalized];
+  }
+  return normalized.replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+}
+
 function App() {
 
   const [matches, setMatches] = useState<Match[]>([]);
@@ -377,24 +400,37 @@ function App() {
           const awayLogo = typeof m.awayTeam === 'object' ? m.awayTeam?.logo : '⚽';
 
           const findOrCreateTeam = (teamName: string, code: string, logo: string) => {
+            const normalizedNameToFind = normalizeTeamName(teamName);
             let foundTeam: any = null;
             newDynamicStandings[comp].forEach((group: any) => {
-              const t = group.entries.find((e: any) =>
-                e.teamName.toLowerCase().includes(teamName.toLowerCase()) ||
-                teamName.toLowerCase().includes(e.teamName.toLowerCase()) ||
-                (e.code && code && e.code.toLowerCase() === code.toLowerCase())
-              );
+              const t = group.entries.find((e: any) => {
+                const normalizedExistingName = normalizeTeamName(e.teamName);
+                return normalizedExistingName === normalizedNameToFind ||
+                       (e.code && code && e.code.toLowerCase() === code.toLowerCase());
+              });
               if (t) foundTeam = t;
             });
             if (!foundTeam) {
+              // For the World Cup, we don't create new teams on the fly.
+              // This prevents a team like "DR Congo" from being added to the wrong group.
+              if (comp === 'FIFA World Cup 2026') {
+                console.warn(`Could not find team "${teamName}" in World Cup standings.`);
+                return null;
+              }
+              // For other competitions, dynamically create the team.
               foundTeam = { rank: 0, teamName, code: code || 'UNK', logo: logo || '⚽', played: 0, win: 0, draw: 0, lose: 0, goalsFor: 0, goalsAgainst: 0, gd: 0, points: 0 };
-              newDynamicStandings[comp][0].entries.push(foundTeam);
+              newDynamicStandings[comp][0].entries.push(foundTeam); // Assumes single-table structure for non-WC
             }
             return foundTeam;
           };
 
           const hTeam = findOrCreateTeam(homeNameStr, homeCode, homeLogo);
           const aTeam = findOrCreateTeam(awayNameStr, awayCode, awayLogo);
+
+          // If a team from a live match can't be found in our standings, skip it.
+          if (!hTeam || !aTeam) {
+            return;
+          }
 
           hTeam.played += 1;
           hTeam.goalsFor += homeScore;

@@ -119,13 +119,14 @@ const SOFA_MIN_INTERVAL = 60 * 1000; // Minimum interval between real RapidAPI f
 // --- NEW: Robust Team Name Normalization for Data Consistency ---
 const teamNameAliases: { [key: string]: string } = {
   'dr congo': 'congo dr',
-  'ivory coast': "côte d'ivoire",
+  "côte d'ivoire": 'ivory coast',
   'usa': 'united states',
   'eng': 'england',
   'ksa': 'saudi arabia',
   'uae': 'united arab emirates',
   'south korea': 'korea republic',
   'korea': 'korea republic',
+  'ir iran': 'iran',
 };
 
 function normalizeTeamName(name: string): string {
