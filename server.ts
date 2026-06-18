@@ -2,6 +2,7 @@ import express from 'express';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import { Pool } from 'pg';
+import { getCache, setCache, hasRedis } from './redisCache';
 
 dotenv.config();
 const app = express();
@@ -208,8 +209,18 @@ app.get('/api/live-matches', async (_req, res) => {
 
   // Strict 60-second cache to give real-time updates while protecting RapidAPI's 1440/day limit
   const LIVE_CACHE_DURATION = 60 * 1000;
+  const redisKey = 'live-matches:v1';
+  try {
+    const r = await getCache(redisKey);
+    if (r && r.timestamp && (Date.now() - r.timestamp < LIVE_CACHE_DURATION)) {
+      return res.status(200).set(corsHeaders).json({ matches: r.data, cached: true, source: 'redis' });
+    }
+  } catch (e) {
+    console.warn('Failed to read Redis cache for live-matches', e);
+  }
+
   if (matchCache && (Date.now() - matchCache.timestamp < LIVE_CACHE_DURATION)) {
-    return res.status(200).set(corsHeaders).json({ matches: matchCache.data, cached: true });
+    return res.status(200).set(corsHeaders).json({ matches: matchCache.data, cached: true, source: 'memory' });
   }
 
   // 🚀 FIX 2: Prevent Cache Stampede (Thundering Herd)
@@ -335,8 +346,16 @@ app.get('/api/live-matches', async (_req, res) => {
     const now = Date.now();
     if (now < lastSofaFetchAllowed) {
       console.warn('RapidAPI backoff active, serving stale cache until', new Date(lastSofaFetchAllowed).toISOString());
+      try {
+        const r = await getCache(redisKey);
+        if (r && r.data && r.data !== minorLeagueFallback) {
+          return res.status(200).set(corsHeaders).json({ matches: r.data, cached: true, warning: true, backoff: true, source: 'redis' });
+        }
+      } catch (e) {
+        console.warn('Redis read failed while serving backoff cache', e);
+      }
       if (matchCache && matchCache.data && matchCache.data !== minorLeagueFallback) {
-        return res.status(200).set(corsHeaders).json({ matches: matchCache.data, cached: true, warning: true, backoff: true });
+        return res.status(200).set(corsHeaders).json({ matches: matchCache.data, cached: true, warning: true, backoff: true, source: 'memory' });
       }
     }
 
@@ -531,6 +550,11 @@ app.get('/api/live-matches', async (_req, res) => {
     }
 
     matchCache = { data: processedMatches, timestamp: Date.now() };
+    try {
+      await setCache(redisKey, { data: processedMatches, timestamp: matchCache.timestamp }, LIVE_CACHE_DURATION);
+    } catch (e) {
+      console.warn('Failed to write live-matches to Redis', e);
+    }
     res.status(200).set(corsHeaders).json({ matches: processedMatches, cached: false });
   } catch (error: any) {
     console.error("RapidAPI Fetch Error:", error.message);
