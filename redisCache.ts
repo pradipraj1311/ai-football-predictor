@@ -1,7 +1,8 @@
 import { Redis } from '@upstash/redis';
 
 const redisUrl = process.env.KV_REDIS_URL || process.env.UPSTASH_REDIS_REST_URL || '';
-const redisToken = process.env.KV_KV_REST_API_READ_ONLY_TOKEN || process.env.KV_REST_API_READ_ONLY_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || '';
+// Prioritize write-enabled tokens for full functionality (like setting maintenance mode).
+const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN || process.env.KV_KV_REST_API_READ_ONLY_TOKEN || process.env.KV_REST_API_READ_ONLY_TOKEN || '';
 
 let redis: Redis | null = null;
 try {
