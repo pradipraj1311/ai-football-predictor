@@ -128,31 +128,59 @@ function App() {
 
   // --- REVISED: Secure Admin & Maintenance Mode ---
   useEffect(() => {
-    const checkMaintenance = () => {
-      const maintenanceStatus = localStorage.getItem('maintenance_mode') === 'true';
-      setIsMaintenance(maintenanceStatus);
-    };
-
-    const checkAdminAuth = () => {
-      // Check session storage for auth flag
+    const checkInitialStatus = async () => {
+      // 1. Check admin auth status from session storage
       const isAuthenticated = sessionStorage.getItem('is_admin_auth') === 'true';
       setIsAdmin(isAuthenticated);
+
+      // 2. Fetch maintenance status from the server (source of truth)
+      try {
+        const res = await fetch('/api/maintenance');
+        if (res.ok) {
+          const data = await res.json();
+          setIsMaintenance(data.maintenance);
+          // Sync to local storage for the initial client-side gate before this fetch completes
+          localStorage.setItem('maintenance_mode', String(data.maintenance));
+        } else {
+          // Fallback to local storage if server has an issue
+          const localStatus = localStorage.getItem('maintenance_mode') === 'true';
+          setIsMaintenance(localStatus);
+        }
+      } catch (e) {
+        console.warn("Could not fetch maintenance status from server. Using local fallback.");
+        const localStatus = localStorage.getItem('maintenance_mode') === 'true';
+        setIsMaintenance(localStatus);
+      }
     };
 
-    checkMaintenance();
-    checkAdminAuth();
-
-    // Listen for storage changes to sync across tabs
-    window.addEventListener('storage', checkMaintenance);
-
-    return () => {
-      window.removeEventListener('storage', checkMaintenance);
-    };
+    checkInitialStatus();
   }, []);
 
-  const setMaintenanceMode = (enabled: boolean) => {
-    localStorage.setItem('maintenance_mode', String(enabled));
-    setIsMaintenance(enabled);
+  const setMaintenanceMode = async (enabled: boolean) => {
+    const password = prompt('Please enter the admin password to change maintenance mode:');
+    if (!password) {
+      alert('Action cancelled. Password is required.');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/maintenance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password, enabled }),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setIsMaintenance(data.maintenance);
+        localStorage.setItem('maintenance_mode', String(data.maintenance));
+        alert(`Success! Maintenance mode is now ${data.maintenance ? 'ON' : 'OFF'}.`);
+      } else {
+        throw new Error(data.message || 'An unknown error occurred.');
+      }
+    } catch (err: any) {
+      alert(`Failed to update maintenance mode: ${err.message}`);
+    }
   };
 
   const handleLogout = () => {

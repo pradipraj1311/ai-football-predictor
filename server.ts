@@ -23,6 +23,28 @@ const pool = new Pool({
   connectionTimeoutMillis: 10000, // Increased to 10 seconds to allow cloud DBs to wake up
 });
 
+// --- NEW: Server-Side Maintenance Mode ---
+let isServerInMaintenance = false;
+
+const checkMaintenance = (_req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (isServerInMaintenance) {
+    return res.status(503).json({ 
+      message: 'The service is temporarily unavailable due to maintenance. Please try again later.',
+      maintenance: true 
+    });
+  }
+  next();
+};
+
+const checkAdminPassword = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const { password } = req.body;
+  const adminPass = process.env.ADMIN_PASSWORD;
+  if (!adminPass || password !== adminPass) {
+    return res.status(403).json({ message: 'Forbidden: Invalid admin password.' });
+  }
+  next();
+};
+
 function getGeminiClients(): GoogleGenAI[] {
   const rawKeys = process.env.GEMINI_API_KEY;
   if (!rawKeys || rawKeys.trim() === "") {
@@ -140,7 +162,7 @@ function normalizeTeamName(name: string): string {
   return normalized.replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
 }
 
-app.get('/api/db-matches', async (_req, res) => {
+app.get('/api/db-matches', checkMaintenance, async (_req, res) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Content-Type': 'application/json',
@@ -225,7 +247,7 @@ app.get('/api/db-matches', async (_req, res) => {
   }
 });
 
-app.get('/api/live-matches', async (_req, res) => {
+app.get('/api/live-matches', checkMaintenance, async (_req, res) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Content-Type': 'application/json',
@@ -692,7 +714,7 @@ app.get('/api/live-matches', async (_req, res) => {
   }
 });
 
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
 
   const adminUser = process.env.ADMIN_USERNAME;
@@ -715,7 +737,22 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-app.get('/api/poll', async (_req, res) => {
+app.get('/api/maintenance', (_req, res) => {
+  res.status(200).json({ maintenance: isServerInMaintenance });
+});
+
+app.post('/api/maintenance', checkAdminPassword, (req, res) => {
+  const { enabled } = req.body;
+  if (typeof enabled !== 'boolean') {
+    return res.status(400).json({ message: 'Invalid payload. "enabled" must be a boolean.' });
+  }
+  isServerInMaintenance = enabled;
+  console.log(`[ADMIN] Server maintenance mode set to: ${isServerInMaintenance ? 'ON' : 'OFF'}`);
+  res.status(200).json({ success: true, maintenance: isServerInMaintenance });
+});
+
+
+app.get('/api/poll', checkMaintenance, async (_req, res) => {
   const corsHeaders = { 'Access-Control-Allow-Origin': '*' };
   try {
     const client = await pool.connect();
@@ -728,7 +765,7 @@ app.get('/api/poll', async (_req, res) => {
   }
 });
 
-app.post('/api/poll/vote', async (req, res) => {
+app.post('/api/poll/vote', checkMaintenance, async (req, res) => {
   const corsHeaders = { 'Access-Control-Allow-Origin': '*' };
   try {
     const { team_id } = req.body;
@@ -745,7 +782,7 @@ app.post('/api/poll/vote', async (req, res) => {
 let predictionCache: { [matchId: string]: { data: any; timestamp: number; scoreHash: string } } = {};
 const PREDICT_CACHE_DURATION = 3 * 60 * 1000;
 
-app.post('/api/predict', async (req, res) => {
+app.post('/api/predict', checkMaintenance, async (req, res) => {
   try {
     const { match } = req.body;
     if (!match || !match.id) {
