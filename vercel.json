@@ -19,6 +19,34 @@
       "dest": "/server.ts"
     },
     {
+      "src": "/sitemap.xml",
+      "dest": "/server.ts"
+    },
+    {
+      "src": "/robots.txt",
+      "dest": "/server.ts"
+    },
+    {
+      "src": "/world-cup-2026",
+      "dest": "/server.ts"
+    },
+    {
+      "src": "/ai-football-predictions",
+      "dest": "/server.ts"
+    },
+    {
+      "src": "/live-football-scores",
+      "dest": "/server.ts"
+    },
+    {
+      "src": "/fantasy-football-ai",
+      "dest": "/server.ts"
+    },
+    {
+      "src": "/predictions/(.*)",
+      "dest": "/server.ts"
+    },
+    {
       "src": "/.well-known/(.*)",
       "dest": "/.well-known/$1"
     },
