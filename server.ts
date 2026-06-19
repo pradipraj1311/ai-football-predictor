@@ -538,7 +538,7 @@ app.get('/api/live-matches', async (_req, res) => {
       return;
     }
 
-    let processedMatches = footballEvents.slice(0, 15).map((event: any) => {
+    let processedMatches = footballEvents.slice(0, 50).map((event: any) => {
       const minuteStr = event.status?.description || event.status?.text || event.status?.name || '45';
       const parsedMinute = parseInt(String(minuteStr).replace(/\D/g, ''), 10) || 45;
 

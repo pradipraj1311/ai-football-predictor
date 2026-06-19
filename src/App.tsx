@@ -625,9 +625,11 @@ function App() {
 
   const highlightMatches = matches.filter((m) => m.status === 'FINISHED' && !!m.youtubeHighlightId);
 
-  const sortedFilteredMatches = activeTab === 'FINISHED'
-    ? [...filteredMatches.filter((m) => !!m.youtubeHighlightId), ...filteredMatches.filter((m) => !m.youtubeHighlightId)]
-    : filteredMatches;
+  const sortedFilteredMatches = activeTab === 'FINISHED' ?
+    [...filteredMatches].sort((a, b) => {
+      // Sort by date descending (newest first)
+      return new Date(b.date).getTime() - new Date(a.date).getTime();
+    }) : filteredMatches;
 
   const path = window.location.pathname;
 
@@ -1010,6 +1012,27 @@ function App() {
       {showProps && <PlayerProps onClose={() => setShowProps(false)} />}
       {showQuiz && <TriviaQuiz onClose={() => setShowQuiz(false)} />}
 
+      {/* NEW: Admin Control Panel */}
+      {isAdmin && (
+        <div className="fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-indigo-500/30 p-3 z-[120] flex items-center justify-center gap-6 text-xs shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
+            <div className="flex items-center gap-2 font-bold text-indigo-400">
+                <Shield className="w-4 h-4" />
+                <span>ADMIN MODE</span>
+            </div>
+            <div className="w-px h-6 bg-white/10"></div>
+            <div className="flex items-center gap-3">
+                <span className="text-slate-400 font-bold">Maintenance Mode:</span>
+                <button onClick={() => setMaintenanceMode(!isMaintenance)} className={`px-3 py-1 rounded-full font-bold uppercase tracking-wider border ${isMaintenance ? 'bg-red-500/20 text-red-300 border-red-500/30' : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'}`}>
+                    {isMaintenance ? 'ON' : 'OFF'}
+                </button>
+            </div>
+            <div className="w-px h-6 bg-white/10"></div>
+            <button onClick={handleLogout} className="flex items-center gap-2 text-slate-400 hover:text-white font-bold">
+                <LogOut className="w-4 h-4" />
+                <span>Logout</span>
+            </button>
+        </div>
+      )}
     </div>
   );
 }
