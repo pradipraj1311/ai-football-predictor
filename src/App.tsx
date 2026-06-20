@@ -14,13 +14,13 @@ import { LoginPage } from './components/LoginPage';
 import { MaintenancePage } from './components/MaintenancePage';
 import { TermsOfService } from './components/TermsOfService';
 import { GLOBAL_TEAMS_DIRECTORY, WORLD_CUP_STANDINGS, FootballTeamProfile } from './data';
-import { BrainCircuit, Shield, Calendar, History, Globe, Coins, CloudRain, Thermometer, BellRing, Target, ListOrdered, Activity, Trophy, Play, Youtube, Swords, Clock, Wrench, LogOut } from 'lucide-react';
+import { BrainCircuit, Shield, Calendar, History, Globe, Coins, Thermometer, BellRing, Target, ListOrdered, Activity, Trophy, Play, Youtube, Swords, LogOut } from 'lucide-react';
 
-// --- 🧠 SENIOR DEV FIX: Data Consistency ---
-// This logic MUST mirror the normalization in `server.ts` to prevent data mismatches.
+// Enhanced data consistency aliases for API responses
 const teamNameAliases: { [key: string]: string } = {
   'dr congo': 'congo dr',
   "côte d'ivoire": 'ivory coast',
+  "cote d'ivoire": 'ivory coast',
   'usa': 'united states',
   'eng': 'england',
   'ksa': 'saudi arabia',
@@ -28,6 +28,8 @@ const teamNameAliases: { [key: string]: string } = {
   'south korea': 'korea republic',
   'korea': 'korea republic',
   'ir iran': 'iran',
+  'basake holy stars fc': 'basake holy stars',
+  'aduana stars fc': 'aduana stars'
 };
 
 function normalizeTeamName(name: string): string {
@@ -40,7 +42,6 @@ function normalizeTeamName(name: string): string {
 }
 
 function App() {
-
   const [matches, setMatches] = useState<Match[]>([]);
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   const [dynamicStandings, setDynamicStandings] = useState<Record<string, any>>({ 'FIFA World Cup 2026': WORLD_CUP_STANDINGS });
@@ -54,35 +55,18 @@ function App() {
   const [resultFilter, setResultFilter] = useState('');
   const [isMaintenance, setIsMaintenance] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
-
-  useEffect(() => {
-    if (!matches.length) return;
-
-    const hasLiveMatch = matches.some((m) => m.status === 'LIVE');
-    const selectedCurrent = selectedMatch && matches.find((m) => m.id === selectedMatch.id);
-    const selectedIsFinished = selectedCurrent && ['FINISHED', 'FT', 'ENDED', 'CLOSED'].includes(selectedCurrent.status);
-
-    // If a selected match is no longer live, but was, switch to H2H or another relevant tab
-    if (activeAnalysisTab === 'TELEMETRY' && selectedCurrent && selectedCurrent.status !== 'LIVE') {
-      setActiveAnalysisTab('H2H');
-    }
-
-    if (selectedIsFinished && activeTab !== 'FINISHED') {
-      setActiveTab('FINISHED');
-    }
-  }, [matches, selectedMatch]);
-
   const [userLocation, setUserLocation] = useState('Global');
   const [sportName, setSportName] = useState('Football');
   const [alerts, setAlerts] = useState<any[]>([]);
-  const previousMatchesRef = useRef<Match[]>([]);
 
+  const previousMatchesRef = useRef<Match[]>([]);
   const lastFetchTimeRef = useRef(0);
   const lastDbFetchTimeRef = useRef(0);
   const dbMatchesRef = useRef<Match[]>([]);
-  const combinedMatchesRef = useRef<Match[]>([]); // Tracks all matches for smart cooldown
+  const combinedMatchesRef = useRef<Match[]>([]);
+  const highlightMatchIdsRef = useRef<Set<string>>(new Set());
+  const initialLoadCompleteRef = useRef<boolean>(false);
 
-  // Initialize persistent finished matches from LocalStorage (keeps results across page reloads)
   const initialFinishedMatches = () => {
     try {
       const stored = localStorage.getItem('e2match_finished');
@@ -91,9 +75,21 @@ function App() {
     } catch (e) { }
     return [];
   };
+  
   const finishedMatchesRef = useRef<Match[]>(initialFinishedMatches());
-  const highlightMatchIdsRef = useRef<Set<string>>(new Set());
-  const initialLoadCompleteRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    if (!matches.length) return;
+    const selectedCurrent = selectedMatch && matches.find((m) => m.id === selectedMatch.id);
+    const selectedIsFinished = selectedCurrent && ['FINISHED', 'FT', 'ENDED', 'CLOSED'].includes(selectedCurrent.status);
+
+    if (activeAnalysisTab === 'TELEMETRY' && selectedCurrent && selectedCurrent.status !== 'LIVE') {
+      setActiveAnalysisTab('H2H');
+    }
+    if (selectedIsFinished && activeTab !== 'FINISHED') {
+      setActiveTab('FINISHED');
+    }
+  }, [matches, selectedMatch, activeTab, activeAnalysisTab]);
 
   useEffect(() => {
     try {
@@ -126,28 +122,22 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // --- REVISED: Secure Admin & Maintenance Mode ---
   useEffect(() => {
     const checkInitialStatus = async () => {
-      // 1. Check admin auth status from session storage
       const isAuthenticated = sessionStorage.getItem('is_admin_auth') === 'true';
       setIsAdmin(isAuthenticated);
 
-      // 2. Fetch maintenance status from the server (source of truth)
       try {
         const res = await fetch('/api/maintenance');
         if (res.ok) {
           const data = await res.json();
           setIsMaintenance(data.maintenance);
-          // Sync to local storage for the initial client-side gate before this fetch completes
           localStorage.setItem('maintenance_mode', String(data.maintenance));
         } else {
-          // Fallback to local storage if server has an issue
           const localStatus = localStorage.getItem('maintenance_mode') === 'true';
           setIsMaintenance(localStatus);
         }
       } catch (e) {
-        console.warn("Could not fetch maintenance status from server. Using local fallback.");
         const localStatus = localStorage.getItem('maintenance_mode') === 'true';
         setIsMaintenance(localStatus);
       }
@@ -186,23 +176,27 @@ function App() {
   const handleLogout = () => {
     sessionStorage.removeItem('is_admin_auth');
     setIsAdmin(false);
-    window.location.href = '/'; // Redirect to home page
+    window.location.href = '/';
   };
 
-  // NEW & OPTIMIZED: Intelligent Data Pipeline (DB + RapidAPI)
   useEffect(() => {
     const fetchAllMatches = async () => {
-      const now = Date.now();
+      // Prevent fetching data entirely if maintenance is ON and user is not admin
+      const maintenanceModeActive = localStorage.getItem('maintenance_mode') === 'true';
+      const isUserAdmin = sessionStorage.getItem('is_admin_auth') === 'true';
+      
+      if (maintenanceModeActive && !isUserAdmin) {
+        return; 
+      }
 
-      // --- 🧠 SENIOR DEV OPTIMIZATION: Ultra-Smart Progressive Cooldown ---
-      // Dynamically adjust API frequency based exactly on when the next match starts.
+      const now = Date.now();
       let requiredCooldown = 0;
       const allMatches = combinedMatchesRef.current;
 
       if (allMatches.length > 0) {
         const hasLive = allMatches.some((m) => m.status === 'LIVE');
         if (hasLive) {
-          requiredCooldown = 60 * 1000; // 1 min (Match is LIVE, fast updates)
+          requiredCooldown = 60 * 1000; 
         } else {
           const upcomingMatches = allMatches.filter((m) => m.status === 'UPCOMING');
           if (upcomingMatches.length > 0) {
@@ -213,7 +207,6 @@ function App() {
                 if (m.date && m.time && m.time.includes(':')) {
                   const [hours, minutes] = m.time.split(':').map(Number);
                   const matchDateObj = new Date(m.date);
-                  // Accurate local time calculation
                   const istOffsetMinutes = 330;
                   const localOffsetMinutes = -matchDateObj.getTimezoneOffset();
                   matchDateObj.setHours(hours, minutes + (localOffsetMinutes - istOffsetMinutes), 0, 0);
@@ -228,30 +221,29 @@ function App() {
 
             if (minTimeUntilMatchMs !== Infinity) {
               if (minTimeUntilMatchMs > 3 * 60 * 60 * 1000) {
-                requiredCooldown = 60 * 60 * 1000; // 1 hr (Next match is > 3 hours away)
+                requiredCooldown = 60 * 60 * 1000; 
               } else if (minTimeUntilMatchMs > 60 * 60 * 1000) {
-                requiredCooldown = 15 * 60 * 1000; // 15 mins (Next match > 1 hour away)
+                requiredCooldown = 15 * 60 * 1000; 
               } else if (minTimeUntilMatchMs > 15 * 60 * 1000) {
-                requiredCooldown = 5 * 60 * 1000; // 5 mins (Next match > 15 mins away)
+                requiredCooldown = 5 * 60 * 1000; 
               } else {
-                requiredCooldown = 2 * 60 * 1000; // 2 mins (Match is starting anytime now!)
+                requiredCooldown = 2 * 60 * 1000; 
               }
             } else {
-              requiredCooldown = 10 * 60 * 1000; // 10 mins fallback
+              requiredCooldown = 10 * 60 * 1000; 
             }
           } else {
-            requiredCooldown = 60 * 60 * 1000; // 1 hr (Day is over, no live, no upcoming)
+            requiredCooldown = 60 * 60 * 1000; 
           }
         }
       }
 
       if (now - lastFetchTimeRef.current < requiredCooldown) {
-        return; // Skip fetch entirely, preserve quotas!
+        return; 
       }
       lastFetchTimeRef.current = now;
 
       try {
-        // --- OPTIMIZATION: Cache DB Matches for 10 minutes to reduce Vercel Postgres reads ---
         const DB_COOLDOWN = 10 * 60 * 1000;
         if (now - lastDbFetchTimeRef.current > DB_COOLDOWN) {
           try {
@@ -260,15 +252,12 @@ function App() {
               const dbData = await dbRes.json();
               dbMatchesRef.current = dbData.matches || [];
               lastDbFetchTimeRef.current = now;
-            } else {
-              console.warn(`DB Fetch failed with status: ${dbRes.status}`);
             }
           } catch (e) {
             console.warn("DB Fetch network error:", e);
           }
         }
 
-        // Determine status on the frontend based on local time
         const dbMatches = (dbMatchesRef.current).reduce((acc: any[], m: any) => {
           if (m.dbStatus === 'FINISHED' || m.dbStatus === 'FT') {
             acc.push({ ...m, status: 'FINISHED', time: 'FT' });
@@ -291,40 +280,32 @@ function App() {
             }
           } catch (e) { }
 
-          // If the match time hasn't passed, keep it as UPCOMING.
-          // If it HAS passed, we drop it from here. RapidAPI will handle the LIVE/FINISHED data.
           if (!isTimePassed) {
             acc.push({ ...m, status: 'UPCOMING', time: m.time });
           }
           return acc;
         }, []);
 
-        // 2. Fetch from Live API
-        // 🚀 FIX: Removed ?t=${Date.now()} cache-buster to protect RapidAPI rate limits
         const liveRes = await fetch(`/api/live-matches`);
         let liveMatches: any[] = [];
         let isLiveFetchSuccess = false;
+        
         if (liveRes.ok) {
           const liveData = await liveRes.json();
           liveMatches = liveData.matches || [];
           isLiveFetchSuccess = !liveData.warning;
 
-          // Honor server-side backoff signal to avoid refetch storms
-          // If server indicates backoff, extend the client cooldown
           try {
-            const BACKOFF_CLIENT_EXTEND = 3 * 60 * 1000; // 3 minutes
-            const CACHED_EXTEND = 60 * 1000; // 1 minute
+            const BACKOFF_CLIENT_EXTEND = 3 * 60 * 1000; 
+            const CACHED_EXTEND = 60 * 1000; 
             if (liveData.backoff) {
               lastFetchTimeRef.current = Date.now() + BACKOFF_CLIENT_EXTEND;
-              console.warn('Server requested backoff; extending client cooldown by 3 minutes');
             } else if (liveData.cached) {
-              // If server served a cached response, avoid immediate re-checks
               lastFetchTimeRef.current = Date.now() + CACHED_EXTEND;
             }
-          } catch (e) { /* no-op */ }
+          } catch (e) { }
         }
 
-        // Preserve highlight IDs from the DB for finished matches that also appear in the live feed
         const dbMatchById = new Map((dbMatches as any[]).map((m: any) => [m.id, m]));
         liveMatches = liveMatches.map((liveMatch: any) => {
           const dbMatch = dbMatchById.get(liveMatch.id);
@@ -334,7 +315,6 @@ function App() {
           return liveMatch;
         });
 
-        // --- NEW: Preserve finished matches from live API ---
         let finishedUpdated = false;
         liveMatches.forEach((m: Match) => {
           if (m.status === 'FINISHED') {
@@ -348,9 +328,6 @@ function App() {
           }
         });
 
-        // --- NEW: Handle matches that drop off the live feed ---
-        // Live APIs often remove matches from the "live" feed immediately after they finish.
-        // If a match was LIVE but is now missing (and the API request was successful), assume it has FINISHED.
         if (isLiveFetchSuccess) {
           const currentLiveIds = new Set(liveMatches.map((m: Match) => m.id));
           previousMatchesRef.current.forEach((prevMatch: Match) => {
@@ -367,7 +344,6 @@ function App() {
           });
         }
 
-        // If any match dropped off and finished, save the updated list to local storage
         if (finishedUpdated) {
           try {
             const now = Date.now();
@@ -377,27 +353,23 @@ function App() {
           } catch (e) { }
         }
 
-        // 3. Combine them intelligently
-        const liveIds = liveMatches.map((m: Match) => m.id);
-        const finishedLiveIds = finishedMatchesRef.current.map((m: Match) => m.id);
+        const liveIds = liveMatches.map((m: Match) => String(m.id));
+        const finishedLiveIds = finishedMatchesRef.current.map((m: Match) => String(m.id));
 
-        const nonLiveDbMatches = dbMatches.filter((m: Match) => !liveIds.includes(m.id) && !finishedLiveIds.includes(m.id));
-        const persistentFinishedMatches = finishedMatchesRef.current.filter((m: Match) => !liveIds.includes(m.id));
+        const nonLiveDbMatches = dbMatches.filter((m: Match) => !liveIds.includes(String(m.id)) && !finishedLiveIds.includes(String(m.id)));
+        const persistentFinishedMatches = finishedMatchesRef.current.filter((m: Match) => !liveIds.includes(String(m.id)));
 
         const combinedMatches = [...liveMatches, ...persistentFinishedMatches, ...nonLiveDbMatches];
 
-        // State & Ref Update
         combinedMatchesRef.current = combinedMatches;
         setMatches(combinedMatches);
 
-        // --- FIXED: Highlight discovery alert flood ---
         const newHighlightMatches = combinedMatches.filter((m: Match) =>
           m.status === 'FINISHED' &&
           m.youtubeHighlightId &&
           !highlightMatchIdsRef.current.has(m.id)
         );
 
-        // Only trigger popups for newly discovered highlights AFTER the initial load
         if (initialLoadCompleteRef.current) {
           newHighlightMatches.forEach((m) => {
             const matchName = `${typeof m.homeTeam === 'object' ? m.homeTeam.name : m.homeTeam} vs ${typeof m.awayTeam === 'object' ? m.awayTeam.name : m.awayTeam}`;
@@ -420,18 +392,13 @@ function App() {
           });
         }
 
-        // Always track the IDs so we don't alert them later
         newHighlightMatches.forEach(m => highlightMatchIdsRef.current.add(m.id));
         initialLoadCompleteRef.current = true;
 
-
-        // --- NEW: FULLY DYNAMIC TOURNAMENT STANDINGS ENGINE ---
         let newDynamicStandings: Record<string, any[]> = {
           'FIFA World Cup 2026': JSON.parse(JSON.stringify(WORLD_CUP_STANDINGS))
         };
 
-        // 🧠 FIX: Use a Set to track processed matches for standings to prevent any possibility of double-counting.
-        // This ensures each match result is applied only once per calculation cycle.
         const processedForStandings = new Set<string>();
 
         const normalizeCompetitionName = (compName: string) => {
@@ -443,8 +410,10 @@ function App() {
           return name || 'Other Competitions';
         };
 
-        const isFinishedOrLiveMatch = (m: Match) =>
-          m.status === 'FINISHED' || m.status === 'FT' || m.status === 'ENDED' || m.status === 'CLOSED' || m.status === 'LIVE';
+        const isFinishedOrLiveMatch = (m: Match) => {
+          const s = String(m.status).toUpperCase();
+          return s === 'FINISHED' || s === 'FT' || s === 'ENDED' || s === 'CLOSED' || s === 'LIVE';
+        };
 
         const validMatchesToCalculate = combinedMatches.filter((m: Match) => {
           return isFinishedOrLiveMatch(m) &&
@@ -453,15 +422,14 @@ function App() {
         });
 
         validMatchesToCalculate.forEach((m: Match) => {
-          // Defensive check: if match has no ID or was already processed, skip.
-          if (!m.id || processedForStandings.has(m.id)) {
+          const matchIdStr = String(m.id);
+          if (!matchIdStr || processedForStandings.has(matchIdStr)) {
             return;
           }
-          processedForStandings.add(m.id);
+          processedForStandings.add(matchIdStr);
 
           const comp = normalizeCompetitionName(m.competition || 'Other Competitions');
 
-          // Initialize dynamic group for new or non-FIFA tournaments
           if (!newDynamicStandings[comp]) {
             newDynamicStandings[comp] = [{ groupName: 'League Table', entries: [] }];
           }
@@ -482,21 +450,17 @@ function App() {
             newDynamicStandings[comp].forEach((group: any) => {
               const t = group.entries.find((e: any) => {
                 const normalizedExistingName = normalizeTeamName(e.teamName);
-                return normalizedExistingName === normalizedNameToFind ||
-                  (e.code && code && e.code.toLowerCase() === code.toLowerCase());
+                return (normalizedExistingName === normalizedNameToFind) ||
+                       (e.code && code && e.code.toLowerCase() === code.toLowerCase() && comp !== 'FIFA World Cup 2026');
               });
               if (t) foundTeam = t;
             });
             if (!foundTeam) {
-              // For the World Cup, we don't create new teams on the fly.
-              // This prevents a team like "DR Congo" from being added to the wrong group.
               if (comp === 'FIFA World Cup 2026') {
-                console.warn(`Could not find team "${teamName}" in World Cup standings.`);
                 return null;
               }
-              // For other competitions, dynamically create the team.
               foundTeam = { rank: 0, teamName, code: code || 'UNK', logo: logo || '⚽', played: 0, win: 0, draw: 0, lose: 0, goalsFor: 0, goalsAgainst: 0, gd: 0, points: 0 };
-              newDynamicStandings[comp][0].entries.push(foundTeam); // Assumes single-table structure for non-WC
+              newDynamicStandings[comp][0].entries.push(foundTeam); 
             }
             return foundTeam;
           };
@@ -504,7 +468,6 @@ function App() {
           const hTeam = findOrCreateTeam(homeNameStr, homeCode, homeLogo);
           const aTeam = findOrCreateTeam(awayNameStr, awayCode, awayLogo);
 
-          // If a team from a live match can't be found in our standings, skip it.
           if (!hTeam || !aTeam) {
             return;
           }
@@ -512,21 +475,13 @@ function App() {
           hTeam.played = (hTeam.played || 0) + 1;
           hTeam.goalsFor = (hTeam.goalsFor || 0) + homeScore;
           hTeam.goalsAgainst = (hTeam.goalsAgainst || 0) + awayScore;
-          if (homeScore > awayScore) { hTeam.win = (hTeam.win || 0) + 1; hTeam.points = (hTeam.points || 0) + 3; }
-          else if (homeScore < awayScore) { hTeam.lose = (hTeam.lose || 0) + 1; }
-          else { hTeam.draw = (hTeam.draw || 0) + 1; hTeam.points = (hTeam.points || 0) + 1; }
+          if (homeScore > awayScore) { hTeam.win = (hTeam.win || 0) + 1; hTeam.points = (hTeam.points || 0) + 3; aTeam.lose = (aTeam.lose || 0) + 1; }
+          else if (homeScore < awayScore) { aTeam.win = (aTeam.win || 0) + 1; aTeam.points = (aTeam.points || 0) + 3; hTeam.lose = (hTeam.lose || 0) + 1; }
+          else { hTeam.draw = (hTeam.draw || 0) + 1; hTeam.points = (hTeam.points || 0) + 1; aTeam.draw = (aTeam.draw || 0) + 1; aTeam.points = (aTeam.points || 0) + 1; }
           hTeam.gd = (hTeam.goalsFor || 0) - (hTeam.goalsAgainst || 0);
-
-          aTeam.played = (aTeam.played || 0) + 1;
-          aTeam.goalsFor = (aTeam.goalsFor || 0) + awayScore;
-          aTeam.goalsAgainst = (aTeam.goalsAgainst || 0) + homeScore;
-          if (awayScore > homeScore) { aTeam.win = (aTeam.win || 0) + 1; aTeam.points = (aTeam.points || 0) + 3; }
-          else if (awayScore < homeScore) { aTeam.lose = (aTeam.lose || 0) + 1; }
-          else { aTeam.draw = (aTeam.draw || 0) + 1; aTeam.points = (aTeam.points || 0) + 1; }
           aTeam.gd = (aTeam.goalsFor || 0) - (aTeam.goalsAgainst || 0);
         });
 
-        // 3. Sort and Rank the Groups
         Object.keys(newDynamicStandings).forEach(comp => {
           newDynamicStandings[comp].forEach((group: any) => {
             group.entries.sort((a: any, b: any) => {
@@ -543,7 +498,6 @@ function App() {
 
         setDynamicStandings(newDynamicStandings);
 
-        // Goal Tracking Logic
         const newAlerts: any[] = [];
         liveMatches.forEach((newMatch: any) => {
           const oldMatch = previousMatchesRef.current.find(m => m.id === newMatch.id);
@@ -561,8 +515,6 @@ function App() {
 
         previousMatchesRef.current = liveMatches;
 
-        // 🚀 FIX 2: STOP AI SPAM (Save Gemini Calls)
-        // Do not update Selected Match if score or time hasn't changed!
         setSelectedMatch(prev => {
           if (!prev) {
             return combinedMatches.find((m: Match) => m.status === 'LIVE') ||
@@ -572,7 +524,6 @@ function App() {
           const updatedMatch = combinedMatches.find((m: Match) => m.id === prev.id);
           if (!updatedMatch) return prev;
 
-          // Only update the object if a goal actually occurred or status changed
           if (
             prev.status !== updatedMatch.status ||
             prev.homeScore !== updatedMatch.homeScore ||
@@ -581,7 +532,6 @@ function App() {
           ) {
             return updatedMatch;
           }
-          // Keep the old data to prevent <AIPredictor /> from re-triggering unnecessarily.
           return prev;
         });
 
@@ -590,9 +540,7 @@ function App() {
       }
     };
 
-    // 🚀 FIX 3: Event Listeners Cleanup
     fetchAllMatches();
-    // Checks every 10 seconds, but respects the Cooldown (60s/180s) to limit data fetches.
     const interval = setInterval(fetchAllMatches, 10000);
 
     const handleVisibilityChange = () => {
@@ -600,7 +548,6 @@ function App() {
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    // Removed window.focus listener as it fires multiple times unnecessarily on mobile along with visibilitychange.
 
     return () => {
       clearInterval(interval);
@@ -626,9 +573,8 @@ function App() {
     }
   };
 
-  // SOFASCORE STYLE TAB FILTERING
   const filteredMatches = matches.filter((m) => {
-    if (!m) return false; // Guard against null matches
+    if (!m) return false; 
     const isFinishedStatus = m.status === 'FINISHED' || m.status === 'FT' || m.status === 'ENDED' || m.status === 'CLOSED';
     if (activeTab === 'LIVE') return m.status === 'LIVE';
     if (activeTab === 'UPCOMING') return m.status === 'UPCOMING';
@@ -636,8 +582,6 @@ function App() {
       if (!isFinishedStatus) return false;
       if (resultFilter) {
         const search = resultFilter.toLowerCase();
-
-        // Bulletproof string extraction
         const homeName = typeof m.homeTeam === 'object' ? (m.homeTeam?.name || '') : String(m.homeTeam || '');
         const awayName = typeof m.awayTeam === 'object' ? (m.awayTeam?.name || '') : String(m.awayTeam || '');
         const compName = String(m.competition || '');
@@ -655,20 +599,15 @@ function App() {
 
   const sortedFilteredMatches = activeTab === 'FINISHED' ?
     [...filteredMatches].sort((a, b) => {
-      // Sort by date descending (newest first)
       return new Date(b.date).getTime() - new Date(a.date).getTime();
     }) : filteredMatches;
 
   const path = window.location.pathname;
 
-  // --- NEW: Auth Routing ---
   if (path === '/login') {
     return <LoginPage />;
   }
 
-  // NEW: Maintenance Mode Gate
-  // If maintenance is on and the user is not an admin, show the maintenance page.
-  // Admins can still access the site (with ?admin=true) to turn it off.
   if (isMaintenance && !isAdmin) {
     return <MaintenancePage />;
   }
@@ -691,9 +630,7 @@ function App() {
             </div>
           </a>
 
-          {/* Premium Navbar Buttons - Top Left */}
           <div className="hidden lg:flex items-center gap-1.5 bg-slate-900/60 p-1.5 rounded-xl border border-white/10 shadow-[inset_0_0_15px_rgba(0,0,0,0.5)]">
-            {/* NEW: Global Highlights Button */}
             <button onClick={handleGlobalHighlightsClick} className="text-[10px] font-black text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-lg uppercase tracking-widest hover:bg-red-500/20 hover:shadow-[0_0_15px_rgba(239,68,68,0.2)] transition-all flex items-center gap-1.5"><Youtube className="w-3.5 h-3.5" /> Highlights</button>
             <div className="w-px h-4 bg-white/10 mx-1"></div>
             <button onClick={triggerTestGoal} className="text-[10px] font-black text-slate-400 hover:text-white hover:bg-white/5 px-3 py-2 rounded-lg uppercase tracking-widest transition-all flex items-center gap-1.5"><BellRing className="w-3.5 h-3.5" /> Alerts</button>
@@ -704,7 +641,6 @@ function App() {
           </div>
         </div>
 
-        {/* Mobile fallback buttons (Icons only to save space) */}
         <div className="lg:hidden flex items-center gap-1.5">
           <button onClick={handleGlobalHighlightsClick} className="text-red-400 bg-red-500/10 border border-red-500/20 p-1.5 rounded-lg hover:bg-red-500/20 transition-colors" aria-label="Highlights"><Youtube className="w-4 h-4" /></button>
           <button onClick={triggerTestGoal} className="text-slate-400 bg-white/5 border border-white/10 p-1.5 rounded-lg hover:bg-white/10 hover:text-white transition-colors" aria-label="Alerts"><BellRing className="w-4 h-4" /></button>
@@ -712,6 +648,7 @@ function App() {
           <button onClick={() => setShowProps(true)} className="text-amber-400 bg-amber-500/10 border border-amber-500/20 p-1.5 rounded-lg hover:bg-amber-500/20 transition-colors" aria-label="Player Props"><Coins className="w-4 h-4" /></button>
         </div>
       </nav>
+
       {path === '/privacy-policy' ? (
         <PrivacyPolicy />
       ) : path === '/terms-of-service' ? (
@@ -739,7 +676,6 @@ function App() {
                     className="w-full bg-[#0B1121] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500/50 transition-colors shadow-inner"
                   />
 
-                  {/* --- NEW: Smart Filter Quick Action Pills --- */}
                   <div className="flex items-center gap-2 overflow-x-auto pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                     <button
                       onClick={() => setResultFilter('')}
@@ -753,12 +689,10 @@ function App() {
                           .filter((m) => m.status === 'FINISHED')
                           .flatMap((m) => {
                             const validTeams: any[] = [];
-                            // Ensure homeTeam exists and has a name
                             if (m.homeTeam && (m.homeTeam.name || typeof m.homeTeam === 'string')) {
                               const name = typeof m.homeTeam === 'object' ? m.homeTeam.name : m.homeTeam;
                               validTeams.push([name, m.homeTeam]);
                             }
-                            // Ensure awayTeam exists and has a name
                             if (m.awayTeam && (m.awayTeam.name || typeof m.awayTeam === 'string')) {
                               const name = typeof m.awayTeam === 'object' ? m.awayTeam.name : m.awayTeam;
                               validTeams.push([name, m.awayTeam]);
@@ -830,14 +764,12 @@ function App() {
                           isSelected={selectedMatch?.id === match.id && !selectedTeam}
                           onSelect={() => {
                             setSelectedMatch(match);
-                            // Reset to the main analysis tab when a new match is selected
                             if (match.status === 'LIVE') {
                               setActiveAnalysisTab('TELEMETRY');
                             } else {
                               setActiveAnalysisTab('ANALYSIS');
                             }
                             setSelectedTeam(null);
-                            // 🚨 ADDED: Smooth scroll for mobile users
                             setTimeout(() => {
                               document.getElementById('ai-analysis-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                             }, 100);
@@ -864,7 +796,6 @@ function App() {
           <div className="lg:col-span-8 xl:col-span-9 flex flex-col gap-6" id="ai-analysis-section">
             {activeTab === 'STANDINGS' ? (
               <div className="flex flex-col gap-4">
-                {/* Tournament Selector Pills */}
                 <div className="flex items-center gap-2 overflow-x-auto pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                   {Object.keys(dynamicStandings || {}).map(comp => (
                     <button
@@ -936,7 +867,6 @@ function App() {
                   </div>
                 </div>
 
-                {/* --- NEW: Tabbed Analysis Section --- */}
                 <div className="bg-[#0B1121] border border-white/5 p-1.5 rounded-xl grid grid-cols-4 gap-1 text-center">
                   <button onClick={() => setActiveAnalysisTab('ANALYSIS')} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${activeAnalysisTab === 'ANALYSIS' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}><BrainCircuit className="w-3.5 h-3.5" /> Analysis</button>
                   <button onClick={() => setActiveAnalysisTab('TELEMETRY')} disabled={selectedMatch.status !== 'LIVE'} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${activeAnalysisTab === 'TELEMETRY' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'} disabled:opacity-30 disabled:cursor-not-allowed`}><Activity className="w-3.5 h-3.5" /> Telemetry</button>
@@ -1020,7 +950,6 @@ function App() {
         </div>
       </footer>
 
-      {/* TOASTS */}
       <div className="fixed bottom-6 right-6 z-[110] flex flex-col gap-3 pointer-events-none">
         {alerts.map(alert => (
           <div
@@ -1040,7 +969,6 @@ function App() {
       {showProps && <PlayerProps onClose={() => setShowProps(false)} />}
       {showQuiz && <TriviaQuiz onClose={() => setShowQuiz(false)} />}
 
-      {/* NEW: Admin Control Panel */}
       {isAdmin && (
         <div className="fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-indigo-500/30 p-3 z-[120] flex items-center justify-center gap-6 text-xs shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
             <div className="flex items-center gap-2 font-bold text-indigo-400">
