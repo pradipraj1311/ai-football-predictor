@@ -6,6 +6,31 @@ import { getCache, setCache, hasRedis } from './redisCache.js';
 
 dotenv.config();
 const app = express();
+
+app.use(async (req, res, next) => {
+  // 1. Exclude maintenance and login endpoints so you don't lock yourself out
+  if (req.path === '/api/maintenance' || req.path === '/api/login') {
+    return next();
+  }
+
+  try {
+    // 2. Fetch the absolute truth directly from Redis on every request
+    const isMaintenanceMode = await getCache('maintenance_mode');
+
+    // 3. If maintenance is active, intercept and kill the request immediately
+    if (isMaintenanceMode === true || isMaintenanceMode === 'true') {
+      return res.status(503).json({ 
+        error: "System is currently under maintenance. Please try again later.",
+        maintenance: true 
+      });
+    }
+  } catch (error) {
+    console.error("Global maintenance check error:", error);
+    // Fail open: If Redis completely fails, allow the app to function
+  }
+
+  next();
+});
 app.use(express.json());
 const PORT = 3000;
 
