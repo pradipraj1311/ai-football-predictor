@@ -633,12 +633,15 @@ function App() {
           </a>
 
           <div className="hidden lg:flex items-center gap-1.5 bg-slate-900/60 p-1.5 rounded-xl border border-white/10 shadow-[inset_0_0_15px_rgba(0,0,0,0.5)]">
-            <button onClick={handleGlobalHighlightsClick} className="text-[10px] font-black text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-lg uppercase tracking-widest hover:bg-red-500/20 hover:shadow-[0_0_15px_rgba(239,68,68,0.2)] transition-all flex items-center gap-1.5"><Youtube className="w-3.5 h-3.5" /> Highlights</button>
+            <div className="relative">
+              <button onClick={handleGlobalHighlightsClick} className="text-[10px] font-black text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-lg uppercase tracking-widest hover:bg-red-500/20 hover:shadow-[0_0_15px_rgba(239,68,68,0.2)] transition-all flex items-center gap-1.5"><Youtube className="w-3.5 h-3.5" /> Highlights</button>
+              {highlightMatches.length > 0 && <span className="absolute -top-1 -right-1 flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-red-500 border-2 border-slate-900"></span></span>}
+            </div>
             <div className="w-px h-4 bg-white/10 mx-1"></div>
             <button onClick={triggerTestGoal} className="text-[10px] font-black text-slate-400 hover:text-white hover:bg-white/5 px-3 py-2 rounded-lg uppercase tracking-widest transition-all flex items-center gap-1.5"><BellRing className="w-3.5 h-3.5" /> Alerts</button>
             <div className="w-px h-4 bg-white/10 mx-1"></div>
             <button onClick={() => document.getElementById('fan-poll')?.scrollIntoView({ behavior: 'smooth' })} className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 rounded-lg uppercase tracking-widest hover:bg-emerald-500/20 hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] transition-all flex items-center gap-1.5"><Trophy className="w-3.5 h-3.5" /> Fan Poll</button>
-            <button onClick={() => setShowQuiz(true)} className="text-[10px] font-black text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-3 py-2 rounded-lg uppercase tracking-widest hover:bg-indigo-500/20 hover:shadow-[0_0_15px_rgba(99,102,241,0.2)] transition-all flex items-center gap-1.5"><BrainCircuit className="w-3.5 h-3.5" /> Trivia Quiz</button>
+            <button onClick={() => setShowQuiz(true)} className="relative text-[10px] font-black text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-3 py-2 rounded-lg uppercase tracking-widest hover:bg-indigo-500/20 hover:shadow-[0_0_15px_rgba(99,102,241,0.2)] transition-all flex items-center gap-1.5"><BrainCircuit className="w-3.5 h-3.5" /> Trivia Quiz <span className="absolute -top-1.5 -right-1.5 text-[7px] font-bold bg-indigo-500 text-white px-1.5 py-0.5 rounded-full">NEW</span></button>
             <button onClick={() => setShowProps(true)} className="text-[10px] font-black text-amber-400 bg-amber-500/10 border border-amber-500/20 px-3 py-2 rounded-lg uppercase tracking-widest hover:bg-amber-500/20 hover:shadow-[0_0_15px_rgba(245,158,11,0.2)] transition-all flex items-center gap-1.5"><Coins className="w-3.5 h-3.5" /> Player Props</button>
           </div>
         </div>
@@ -663,7 +666,9 @@ function App() {
               <button onClick={() => { setActiveTab('UPCOMING'); setSelectedTeam(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'UPCOMING' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><Calendar className="w-3 h-3" /> Upcoming</button>
               <button onClick={() => { setActiveTab('FINISHED'); setSelectedTeam(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'FINISHED' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><History className="w-3 h-3" /> Results</button>
               <button onClick={() => { setActiveTab('STANDINGS'); setSelectedTeam(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'STANDINGS' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><ListOrdered className="w-3 h-3" /> Table</button>
-              <button onClick={() => { setActiveTab('TEAMS'); setSelectedTeam(GLOBAL_TEAMS_DIRECTORY[0]); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'TEAMS' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><Shield className="w-3 h-3" /> Teams</button>
+              <button onClick={() => { setActiveTab('TEAMS'); setSelectedTeam(GLOBAL_TEAMS_DIRECTORY[0]); }} className={`relative py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'TEAMS' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}>
+                <Shield className="w-3 h-3" /> Teams <span className="absolute top-0 right-1 text-[7px] font-bold bg-indigo-500 text-white px-1 rounded-full">NEW</span>
+              </button>
               <button onClick={() => { setActiveTab('POLL'); setSelectedTeam(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'POLL' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><Trophy className="w-3 h-3" /> Poll</button>
             </div>
 
@@ -672,7 +677,7 @@ function App() {
                 <div className="mb-4 shrink-0 animate-fade-in-up flex flex-col gap-3">
                   <input
                     type="text"
-                    placeholder="Search finished matches, teams, or competitions"
+                    placeholder="Search results (New Feature)"
                     value={resultFilter}
                     onChange={(e) => setResultFilter(e.target.value)}
                     className="w-full bg-[#0B1121] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500/50 transition-colors shadow-inner"
@@ -870,10 +875,16 @@ function App() {
                 </div>
 
                 <div className="bg-[#0B1121] border border-white/5 p-1.5 rounded-xl grid grid-cols-4 gap-1 text-center">
-                  <button onClick={() => setActiveAnalysisTab('ANALYSIS')} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${activeAnalysisTab === 'ANALYSIS' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}><BrainCircuit className="w-3.5 h-3.5" /> Analysis</button>
+                  <button onClick={() => setActiveAnalysisTab('ANALYSIS')} className={`relative py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${activeAnalysisTab === 'ANALYSIS' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}>
+                    <BrainCircuit className="w-3.5 h-3.5" /> Analysis
+                    <span className="absolute top-0.5 right-1 text-[7px] font-bold bg-indigo-500 text-white px-1.5 py-0.5 rounded-full">NEW</span>
+                  </button>
                   <button onClick={() => setActiveAnalysisTab('TELEMETRY')} disabled={selectedMatch.status !== 'LIVE'} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${activeAnalysisTab === 'TELEMETRY' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'} disabled:opacity-30 disabled:cursor-not-allowed`}><Activity className="w-3.5 h-3.5" /> Telemetry</button>
                   <button onClick={() => setActiveAnalysisTab('H2H')} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${activeAnalysisTab === 'H2H' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}><Swords className="w-3.5 h-3.5" /> H2H</button>
-                  <button onClick={() => setActiveAnalysisTab('HIGHLIGHTS')} disabled={!selectedMatch.youtubeHighlightId} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${activeAnalysisTab === 'HIGHLIGHTS' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'} disabled:opacity-30 disabled:cursor-not-allowed`}><Youtube className="w-3.5 h-3.5" /> Highlights</button>
+                  <button onClick={() => setActiveAnalysisTab('HIGHLIGHTS')} disabled={!selectedMatch.youtubeHighlightId} className={`relative py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${activeAnalysisTab === 'HIGHLIGHTS' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'} disabled:opacity-30 disabled:cursor-not-allowed`}>
+                    <Youtube className="w-3.5 h-3.5" /> Highlights
+                    {selectedMatch.youtubeHighlightId && <span className="absolute top-0.5 right-1 flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span></span>}
+                  </button>
                 </div>
 
                 <div className="animate-fade-in-up">

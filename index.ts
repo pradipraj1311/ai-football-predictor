@@ -138,7 +138,22 @@ app.get('/sitemap.xml', (_req, res) => {
     res.setHeader('Content-Type', 'application/xml; charset=utf-8');
     res.setHeader('Cache-Control', 'public, max-age=86400');
     const today = new Date().toISOString().split('T')[0];
-    const xml = `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://e2match.vercel.app/</loc><lastmod>${today}</lastmod></url></urlset>`;
+    const baseUrl = 'https://e2match.vercel.app';
+    const urls = [
+        '/',
+        '/world-cup-2026',
+        '/ai-football-predictions',
+        '/fantasy-football-ai',
+        '/live-football-scores',
+        '/privacy-policy',
+        '/terms-of-service',
+    ];
+
+    const urlset = urls.map(url =>
+        `<url><loc>${baseUrl}${url}</loc><lastmod>${today}</lastmod></url>`
+    ).join('');
+
+    const xml = `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urlset}</urlset>`;
     res.status(200).send(xml);
 });
 
