@@ -1,6 +1,6 @@
 import express from 'express';
 import type { Express, Request, Response, NextFunction } from 'express';
-import { getCache, setCache } from '../redisCache.js';
+import { getCache, setCache } from '../../redisCache.js';
 
 export function setupAdminRoutes(app: Express) {
     const CORS_HEADERS = {

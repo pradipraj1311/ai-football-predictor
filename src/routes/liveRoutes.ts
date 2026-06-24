@@ -2,7 +2,7 @@ import express from 'express';
 import type { Express } from 'express';
 import { Pool } from 'pg';
 import { transformMatchRow } from '../utils/matchTransform.js';
-import { getCache, setCache } from '../redisCache.js';
+import { getCache, setCache } from '../../redisCache.js';
 
 export function setupLiveRoutes(app: Express, pool: Pool) {
     const CORS_HEADERS = {

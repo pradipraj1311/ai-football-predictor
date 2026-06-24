@@ -502,8 +502,10 @@ function App() {
         liveMatches.forEach((newMatch: any) => {
           const oldMatch = previousMatchesRef.current.find(m => m.id === newMatch.id);
           if (oldMatch) {
-            if (newMatch.homeScore > oldMatch.homeScore) {
-              newAlerts.push({ id: Date.now(), matchName: `${newMatch.homeTeam.code} v ${newMatch.awayTeam.code}`, message: `GOAL! ${newMatch.homeTeam.name} [${newMatch.homeScore}] - ${newMatch.awayScore}`, minute: newMatch.minute });
+            if (typeof newMatch.homeScore === 'number' && typeof oldMatch.homeScore === 'number') {
+              if (newMatch.homeScore > oldMatch.homeScore) {
+                newAlerts.push({ id: Date.now(), matchName: `${newMatch.homeTeam.code} v ${newMatch.awayTeam.code}`, message: `GOAL! ${newMatch.homeTeam.name} [${newMatch.homeScore}] - ${newMatch.awayScore}`, minute: newMatch.minute });
+              }
             }
           }
         });
@@ -575,7 +577,7 @@ function App() {
 
   const filteredMatches = matches.filter((m) => {
     if (!m) return false; 
-    const isFinishedStatus = m.status === 'FINISHED' || m.status === 'FT' || m.status === 'ENDED' || m.status === 'CLOSED';
+    const isFinishedStatus = ['FINISHED', 'FT', 'ENDED', 'CLOSED'].includes(String(m.status));
     if (activeTab === 'LIVE') return m.status === 'LIVE';
     if (activeTab === 'UPCOMING') return m.status === 'UPCOMING';
     if (activeTab === 'FINISHED') {

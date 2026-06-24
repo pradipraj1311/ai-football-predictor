@@ -4,7 +4,7 @@ import { Activity, BarChart3, Crosshair, ShieldAlert } from 'lucide-react';
 
 export const LiveTelemetry: React.FC<{ match: Match }> = ({ match }) => {
   // Simulated telemetry data for premium visual effect based on current score
-  const homeAdvantage = match.homeScore >= match.awayScore;
+  const homeAdvantage = (match.homeScore ?? 0) >= (match.awayScore ?? 0);
   const homePossession = homeAdvantage ? 58 : 42;
   const awayPossession = 100 - homePossession;
 
@@ -77,11 +77,11 @@ export const LiveTelemetry: React.FC<{ match: Match }> = ({ match }) => {
           {/* Dangerous Attacks */}
           <div>
             <div className="flex justify-between text-xs font-black text-white mb-2">
-              <span className="font-mono">{match.homeScore * 14 + 21}</span>
+              <span className="font-mono">{(match.homeScore ?? 0) * 14 + 21}</span>
               <span className="text-[10px] text-slate-500 uppercase tracking-widest flex items-center gap-1">
                 <ShieldAlert className="w-3 h-3 text-red-400" /> Dangerous Attacks
               </span>
-              <span className="font-mono">{match.awayScore * 12 + 18}</span>
+              <span className="font-mono">{(match.awayScore ?? 0) * 12 + 18}</span>
             </div>
             <div className="h-2 flex rounded-full overflow-hidden bg-[#0f172a] shadow-inner">
               <div style={{ width: `${homeAdvantage ? 65 : 40}%` }} className="bg-emerald-500 transition-all duration-500 ease-out"></div>
@@ -92,11 +92,11 @@ export const LiveTelemetry: React.FC<{ match: Match }> = ({ match }) => {
           {/* Shots on Target */}
           <div>
             <div className="flex justify-between text-xs font-black text-white mb-2">
-              <span className="font-mono">{match.homeScore + 3}</span>
+              <span className="font-mono">{(match.homeScore ?? 0) + 3}</span>
               <span className="text-[10px] text-slate-500 uppercase tracking-widest flex items-center gap-1">
                 <Crosshair className="w-3 h-3 text-indigo-400" /> Shots on Target
               </span>
-              <span className="font-mono">{match.awayScore + 2}</span>
+              <span className="font-mono">{(match.awayScore ?? 0) + 2}</span>
             </div>
             <div className="h-2 flex rounded-full overflow-hidden bg-[#0f172a] shadow-inner">
               <div style={{ width: `${homeAdvantage ? 70 : 30}%` }} className="bg-emerald-500 transition-all duration-500 ease-out"></div>

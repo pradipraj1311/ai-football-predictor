@@ -2,7 +2,7 @@ import express from 'express';
 import type { Express } from 'express';
 import { Pool } from 'pg';
 import { transformMatchRow, calculateMatchPrediction, getMatchBet } from '../utils/matchTransform.js';
-import { getCache, setCache } from '../redisCache.js';
+import { getCache, setCache } from '../../redisCache.js';
 
 export function setupMatchRoutes(app: Express, pool: Pool, fetchAndSaveHighlight: (id: string, home: string, away: string) => Promise<string | null>) {
     const CORS_HEADERS = {
