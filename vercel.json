@@ -2,56 +2,55 @@
   "version": 2,
   "builds": [
     {
+      "src": "index.ts",
+      "use": "@vercel/node"
+    },
+    {
       "src": "package.json",
       "use": "@vercel/static-build",
       "config": {
         "distDir": "dist"
       }
-    },
-    {
-      "src": "server.ts",
-      "use": "@vercel/node"
     }
   ],
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "/server.ts"
+      "dest": "/index.ts"
     },
     {
       "src": "/sitemap.xml",
-      "dest": "/server.ts"
+      "dest": "/index.ts"
     },
     {
       "src": "/robots.txt",
-      "dest": "/server.ts"
+      "dest": "/index.ts"
     },
     {
       "src": "/world-cup-2026",
-      "dest": "/server.ts"
+      "dest": "/index.ts"
     },
     {
       "src": "/ai-football-predictions",
-      "dest": "/server.ts"
+      "dest": "/index.ts"
     },
     {
       "src": "/live-football-scores",
-      "dest": "/server.ts"
+      "dest": "/index.ts"
     },
     {
       "src": "/fantasy-football-ai",
-      "dest": "/server.ts"
+      "dest": "/index.ts"
     },
     {
       "src": "/predictions/(.*)",
-      "dest": "/server.ts"
+      "dest": "/index.ts"
     },
     {
-      "src": "/.well-known/(.*)",
-      "dest": "/.well-known/$1"
+      "handle": "filesystem"
     },
     {
-      "src": "/((?!.*\\.\\w+$).*)",
+      "src": "/(.*)",
       "dest": "/index.html"
     }
   ]

@@ -100,6 +100,76 @@ setupMatchRoutes(app, pool, fetchAndSaveHighlight);
 setupAdminRoutes(app);
 setupLiveRoutes(app, pool);
 
+// ============= SEO & SITEMAP ROUTES =============
+function seoPage(title: string, description: string, keywords: string, bodyContent: string, canonical: string): string {
+    return `<!DOCTYPE html>
+  <html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${title}</title>
+    <meta name="description" content="${description}">
+    <meta name="keywords" content="${keywords}">
+    <link rel="canonical" href="https://e2match.vercel.app${canonical}">
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0B1121; color: #e2e8f0; min-height: 100vh; }
+      .container { max-width: 900px; margin: 0 auto; padding: 2rem 1rem; }
+      .hero { text-align: center; padding: 3rem 1rem 2rem; }
+      .hero h1 { font-size: clamp(1.5rem, 4vw, 2.5rem); font-weight: 800; color: #fff; margin-bottom: 1rem; line-height: 1.2; }
+      .hero p { font-size: 1.1rem; color: #94a3b8; max-width: 600px; margin: 0 auto 2rem; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      ${bodyContent}
+    </div>
+  </body>
+  </html>`;
+}
+
+app.get('/robots.txt', (_req, res) => {
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.status(200).send(`User-agent: *\nAllow: /\nSitemap: https://e2match.vercel.app/sitemap.xml\n`);
+});
+
+app.get('/sitemap.xml', (_req, res) => {
+    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    const today = new Date().toISOString().split('T')[0];
+    const xml = `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://e2match.vercel.app/</loc><lastmod>${today}</lastmod></url></urlset>`;
+    res.status(200).send(xml);
+});
+
+app.get('/world-cup-2026', (_req, res) => {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    const body = `<div class="hero"><h1>FIFA World Cup 2026 Live Updates</h1></div>`;
+    res.status(200).send(seoPage('FIFA World Cup 2026', 'Live scores', 'world cup 2026', body, '/world-cup-2026'));
+});
+
+app.get('/ai-football-predictions', (_req, res) => {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    const body = `<div class="hero"><h1>AI Football Predictions</h1></div>`;
+    res.status(200).send(seoPage('AI Football Predictions', 'AI Predictions', 'ai football', body, '/ai-football-predictions'));
+});
+
+app.get('/fantasy-football-ai', (_req, res) => {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    const body = `<div class="hero"><h1>Free AI Fantasy Football Advice</h1></div>`;
+    res.status(200).send(seoPage('Fantasy Football AI', 'Fantasy Football', 'fantasy football', body, '/fantasy-football-ai'));
+});
+
+app.get('/live-football-scores', (_req, res) => {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    const body = `<div class="hero"><h1>Live Football Scores</h1></div>`;
+    res.status(200).send(seoPage('Live Football Scores', 'Live Scores', 'live scores', body, '/live-football-scores'));
+});
+
 // ============= FALLBACK ROUTES =============
 app.get('/api/status', async (_req, res) => {
     try {
