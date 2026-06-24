@@ -23,10 +23,6 @@
       "dest": "/index.ts"
     },
     {
-      "src": "/robots.txt",
-      "dest": "/index.ts"
-    },
-    {
       "src": "/world-cup-2026",
       "dest": "/index.ts"
     },
@@ -45,9 +41,6 @@
     {
       "src": "/predictions/(.*)",
       "dest": "/index.ts"
-    },
-    {
-      "handle": "filesystem"
     },
     {
       "src": "/(.*)",
