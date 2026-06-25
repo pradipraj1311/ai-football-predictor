@@ -1,10 +1,29 @@
 import express from 'express';
+import * as admin from 'firebase-admin';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import { Pool } from 'pg';
 import { getCache, setCache, hasRedis } from './redisCache.js';
 
 dotenv.config();
+
+if (!admin.apps.length) {
+  try {
+    const privateKey = process.env.private_key ? process.env.private_key.replace(/\\n/g, '\n') : '';
+
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: process.env.project_id,
+        clientEmail: process.env.client_email,
+        privateKey: privateKey,
+      }),
+    });
+    console.log("Firebase Admin Initialized Successfully!");
+  } catch (error) {
+    console.error("Firebase Admin Initialization Error:", error);
+  }
+}
+
 const app = express();
 app.use(express.json());
 const PORT = 3000;
@@ -19,21 +38,19 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false },
   max: 1,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000, 
+  connectionTimeoutMillis: 10000,
 });
 
 const checkMaintenance = async (_req: express.Request, res: express.Response, next: express.NextFunction) => {
   try {
     const maintenanceStatus = await getCache('maintenance_mode');
-    if (maintenanceStatus === true) { 
+    if (maintenanceStatus === true) {
       return res.status(503).json({
         message: 'The service is temporarily unavailable due to maintenance. Please try again later.',
         maintenance: true
       });
     }
-  } catch (e) {
-    console.error("Maintenance check failed:", e);
-  }
+  } catch (e) { console.error("Maintenance check failed:", e); }
   next();
 };
 
@@ -122,14 +139,14 @@ async function fetchAndSaveHighlight(matchId: string, homeTeamName: string, away
 let matchCache: { data: any; timestamp: number } | null = null;
 const CACHE_DURATION = 5 * 60 * 1000;
 let inFlightLiveFetch: Promise<any> | null = null;
-let lastSofaFetchAllowed = 0; 
-const SOFA_BACKOFF_BASE = 30 * 1000; 
-const SOFA_FETCH_TIMEOUT = 5 * 1000; 
+let lastSofaFetchAllowed = 0;
+const SOFA_BACKOFF_BASE = 30 * 1000;
+const SOFA_FETCH_TIMEOUT = 5 * 1000;
 let sofa429Count = 0;
-let currentSofaKeyIndex = 0; 
-const SOFA_MAX_BACKOFF = 10 * 60 * 1000; 
-const SOFA_BACKOFF_JITTER = 0.25; 
-const SOFA_MIN_INTERVAL = 60 * 1000; 
+let currentSofaKeyIndex = 0;
+const SOFA_MAX_BACKOFF = 10 * 60 * 1000;
+const SOFA_BACKOFF_JITTER = 0.25;
+const SOFA_MIN_INTERVAL = 60 * 1000;
 
 const teamNameAliases: { [key: string]: string } = {
   'dr congo': 'congo dr',
@@ -157,7 +174,7 @@ app.get('/api/db-matches', checkMaintenance, async (_req, res) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Content-Type': 'application/json',
-    'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' 
+    'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120'
   };
   if (!process.env.DB_URL) {
     console.warn('DB_URL not set. Returning empty matches.');
@@ -192,7 +209,7 @@ app.get('/api/db-matches', checkMaintenance, async (_req, res) => {
       return {
         id: row.id,
         competition: row.competition || 'FIFA World Cup 2026',
-        dbStatus: isFinished ? 'FINISHED' : 'SCHEDULED', 
+        dbStatus: isFinished ? 'FINISHED' : 'SCHEDULED',
         time: displayTime || 'TBD',
         date: new Date(row.match_date).toISOString().split('T')[0],
         youtubeHighlightId: ytId || null,
@@ -237,11 +254,11 @@ app.get('/api/live-matches', checkMaintenance, async (_req, res) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Content-Type': 'application/json',
-    'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' 
+    'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120'
   };
 
   const LIVE_CACHE_DURATION = 60 * 1000;
-  const STALE_WHILE_REVALIDATE_WINDOW = 5 * 60 * 1000; 
+  const STALE_WHILE_REVALIDATE_WINDOW = 5 * 60 * 1000;
   const redisKey = 'live-matches:v1';
   const backoffKey = 'live-matches:backoff-until';
 
@@ -297,31 +314,26 @@ app.get('/api/live-matches', checkMaintenance, async (_req, res) => {
     h2h: { matchesPlayed: 1, homeWins: 1, awayWins: 0, draws: 0, lastResults: ['W'] }
   }];
 
-  // --- TEMP DISABLE RAPIDAPI ---
-  // To save RapidAPI quota, returning cached/fallback data for now.
+  checkGoalsAndNotify(minorLeagueFallback);
   return res.status(200).set(corsHeaders).json({ matches: minorLeagueFallback, cached: false, warning: true });
-  // -----------------------------
 });
 
-// --- NEW: SMART STANDINGS API (100% RapidAPI + 12h Cache) ---
 app.get('/api/standings', checkMaintenance, async (req, res) => {
   const corsHeaders = { 'Access-Control-Allow-Origin': '*' };
-  
+
   // Default to World Cup 2026 (Tournament: 16, Season: 52186) if no query params provided
-  const tournamentId = req.query.tournamentId || '16'; 
-  const seasonId = req.query.seasonId || '52186'; 
+  const tournamentId = req.query.tournamentId || '16';
+  const seasonId = req.query.seasonId || '52186';
 
   const cacheKey = `standings:${tournamentId}:${seasonId}`;
 
   try {
-    // 1. Check Redis Cache First (Save Money & Time)
     const cachedData = await getCache(cacheKey);
     if (cachedData && cachedData.data) {
       console.log(`Served Standings from Cache for Tournament: ${tournamentId}`);
       return res.status(200).set(corsHeaders).json({ standings: cachedData.data, cached: true });
     }
 
-    // 2. Fetch Standings ALWAYS from RapidAPI
     console.log(`Fetching External Standings from RapidAPI for Tournament: ${tournamentId}...`);
     const keys = (process.env.RAPID_API_KEY || '').split(',').map(k => k.trim()).filter(Boolean);
     if (keys.length === 0) throw new Error('RAPID_API_KEY missing');
@@ -329,33 +341,29 @@ app.get('/api/standings', checkMaintenance, async (req, res) => {
     const url = `https://sofascore6.p.rapidapi.com/api/sofascore/v1/tournament/${tournamentId}/season/${seasonId}/standings`;
     const response = await fetch(url, {
       headers: {
-        'X-RapidAPI-Key': keys[0], 
+        'X-RapidAPI-Key': keys[0],
         'X-RapidAPI-Host': 'sofascore6.p.rapidapi.com'
       }
     });
 
     if (!response.ok) {
-        if(response.status === 429) throw new Error('RapidAPI Rate Limit Exceeded');
-        throw new Error(`API returned ${response.status}`);
+      if (response.status === 429) throw new Error('RapidAPI Rate Limit Exceeded');
+      throw new Error(`API returned ${response.status}`);
     }
-    
+
     const data = await response.json();
-    
-    // 3. Format the raw data cleanly
-    // Note: World Cup has multiple groups, so Sofascore might return an array of standings.
-    // We flatten them or process the first one based on response structure.
+
     let formattedStandings: any[] = [];
 
     if (data.standings && Array.isArray(data.standings)) {
-      // Loop through all groups (Group A, Group B, etc.)
       data.standings.forEach((group: any) => {
         const groupName = group.name || 'Group';
-        
+
         group.rows?.forEach((row: any) => {
           formattedStandings.push({
             rank: row.position,
             team: row.team?.name || 'Unknown',
-            logo: '⚽', // Add mapping later if needed
+            logo: '⚽',
             played: row.matches || 0,
             won: row.wins || 0,
             drawn: row.draws || 0,
@@ -372,7 +380,7 @@ app.get('/api/standings', checkMaintenance, async (req, res) => {
 
     // 4. Cache Logic: Cache for 12 hours (43200 seconds) to heavily preserve RapidAPI quota
     if (formattedStandings.length > 0) {
-      await setCache(cacheKey, { data: formattedStandings }, 43200); 
+      await setCache(cacheKey, { data: formattedStandings }, 43200);
     }
 
     res.status(200).set(corsHeaders).json({ standings: formattedStandings, cached: false });
@@ -408,7 +416,7 @@ app.get('/api/maintenance', async (_req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
-  
+
   const maintenanceStatus = await getCache('maintenance_mode') || false;
   res.status(200).json({ maintenance: maintenanceStatus });
 });
@@ -418,7 +426,7 @@ app.post('/api/maintenance', checkAdminPassword, async (req, res) => {
   if (typeof enabled !== 'boolean') {
     return res.status(400).json({ message: 'Invalid payload. "enabled" must be a boolean.' });
   }
-  await setCache('maintenance_mode', enabled); 
+  await setCache('maintenance_mode', enabled);
   console.log(`[ADMIN] Server maintenance mode set to: ${enabled ? 'ON' : 'OFF'}`);
   res.status(200).json({ success: true, maintenance: enabled });
 });
@@ -432,7 +440,7 @@ app.get('/api/poll', checkMaintenance, async (_req, res) => {
     res.status(200).set(corsHeaders).json(result.rows);
   } catch (error) {
     console.error("Poll DB Error:", error);
-    res.status(200).set(corsHeaders).json([]); 
+    res.status(200).set(corsHeaders).json([]);
   }
 });
 
@@ -472,23 +480,69 @@ app.post('/api/predict', checkMaintenance, async (req, res) => {
       return res.json({ prediction: predictionCache[matchId].data, cached: true });
     }
 
-    // --- TEMP DISABLE GEMINI ---
-    return res.json({ 
-      prediction: { 
-        analysis: "AI Analysis is temporarily paused to save API limits.", 
+    return res.json({
+      prediction: {
+        analysis: "AI Analysis is temporarily paused to save API limits.",
         vulnerabilities: { home: "N/A", away: "N/A" },
         keyMatchups: [],
-        winProbability: {"home": 33, "draw": 34, "away": 33}, 
-        suggestedScore: "0-0" 
-      }, 
-      cached: true 
+        winProbability: { "home": 33, "draw": 34, "away": 33 },
+        suggestedScore: "0-0"
+      },
+      cached: true
     });
-    // ---------------------------
-    
+
   } catch (error: any) {
     res.status(500).json({ error: 'Gemini Analysis Interrupted', details: error.message });
   }
 });
+
+const sendFirebaseTopicNotification = async (topic: string, title: string, body: string) => {
+  const message = {
+    notification: { title, body },
+    topic: topic,
+  };
+
+  try {
+    const response = await admin.messaging().send(message);
+    console.log(`Successfully sent message to topic ${topic}:`, response);
+  } catch (error) {
+    console.error(`Error sending message to topic ${topic}:`, error);
+  }
+};
+
+let previousScoresCache: { [matchId: string]: string } = {};
+
+const checkGoalsAndNotify = async (liveMatches: any[]) => {
+  liveMatches.forEach(match => {
+    if (match.status === 'LIVE' && match.homeScore !== undefined && match.awayScore !== undefined) {
+      const matchId = String(match.id);
+      const currentScoreHash = `${match.homeScore}-${match.awayScore}`;
+
+      const prevScoreHash = previousScoresCache[matchId];
+
+      if (prevScoreHash && prevScoreHash !== currentScoreHash) {
+        let goalMessage = '';
+        const prevScores = prevScoreHash.split('-');
+        const prevHome = parseInt(prevScores[0]);
+        const prevAway = parseInt(prevScores[1]);
+
+        if (match.homeScore > prevHome) {
+          goalMessage = `⚽ GOAL! ${match.homeTeam.name} scores!`;
+        } else if (match.awayScore > prevAway) {
+          goalMessage = `⚽ GOAL! ${match.awayTeam.name} scores!`;
+        } else {
+          goalMessage = `⚽ SCORE UPDATE!`;
+        }
+
+        const fullMessage = `${match.homeTeam.name} ${match.homeScore} - ${match.awayScore} ${match.awayTeam.name}`;
+
+        sendFirebaseTopicNotification('global_goal_alerts', goalMessage, fullMessage);
+      }
+
+      previousScoresCache[matchId] = currentScoreHash;
+    }
+  });
+};
 
 app.get('/robots.txt', (_req, res) => {
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
