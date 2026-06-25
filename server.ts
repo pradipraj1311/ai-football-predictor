@@ -65,7 +65,6 @@ const checkMaintenance = async (_req: express.Request, res: express.Response, ne
   next();
 };
 
-// Maintenance check sirf API routes par j lagavvu, login/maintenance endpoints sivay.
 app.use('/api', (req, res, next) => {
   if (req.path.startsWith('/login') || req.path.startsWith('/maintenance')) {
     return next();
@@ -515,10 +514,30 @@ app.post('/api/predict', async (req, res) => {
   }
 });
 
+// 1. Function to send a notification to a Firebase 'Topic' (HIGH PRIORITY)
 const sendFirebaseTopicNotification = async (topic: string, title: string, body: string) => {
   const message = {
-    notification: { title, body },
+    notification: {
+      title: title,
+      body: body
+    },
     topic: topic,
+    // 🔴 Special High Priority setting for Android 🔴
+    android: {
+      priority: 'high' as const,
+      notification: {
+        sound: 'default',
+        channelId: 'default',
+      },
+    },
+    // For iOS
+    apns: {
+      payload: {
+        aps: {
+          sound: 'default',
+        },
+      },
+    },
   };
 
   try {
@@ -562,6 +581,20 @@ const checkGoalsAndNotify = async (liveMatches: any[]) => {
     }
   });
 };
+
+// --- SECRET TEST ROUTE ---
+app.get('/api/test-noti', async (req, res) => {
+  try {
+    await sendFirebaseTopicNotification(
+      'global_goal_alerts',
+      '🚀 VERCEL TEST!',
+      'This is a High-Priority notification from your backend!'
+    );
+    res.status(200).send('<h1>Notification Fired! Check your emulator!</h1>');
+  } catch (error) {
+    res.status(500).send('Error firing notification');
+  }
+});
 
 app.get('/robots.txt', (_req, res) => {
   try {
