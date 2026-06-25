@@ -1,5 +1,4 @@
 import express from 'express';
-import * as admin from 'firebase-admin';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import { Pool } from 'pg';
@@ -7,22 +6,34 @@ import { getCache, setCache, hasRedis } from './redisCache.js';
 
 dotenv.config();
 
-if (!admin.apps.length) {
-  try {
-    const privateKey = process.env.private_key ? process.env.private_key.replace(/\\n/g, '\n') : '';
+// --- INITIALIZE FIREBASE ADMIN (SAFE MODE) ---
+import * as admin from 'firebase-admin';
 
-    admin.initializeApp({
-      credential: admin.credential.cert({
-        projectId: process.env.project_id,
-        clientEmail: process.env.client_email,
-        privateKey: privateKey,
-      }),
-    });
-    console.log("Firebase Admin Initialized Successfully!");
-  } catch (error) {
-    console.error("Firebase Admin Initialization Error:", error);
+try {
+  // Check if admin is imported and apps array exists before checking length
+  if (admin && admin.apps && admin.apps.length === 0) {
+    
+    // Check if the environment variables actually exist to prevent crashes
+    if (process.env.project_id && process.env.client_email && process.env.private_key) {
+      
+      const privateKey = process.env.private_key.replace(/\\n/g, '\n');
+      
+      admin.initializeApp({
+        credential: admin.credential.cert({
+          projectId: process.env.project_id,
+          clientEmail: process.env.client_email,
+          privateKey: privateKey,
+        }),
+      });
+      console.log("Firebase Admin Initialized Successfully!");
+    } else {
+      console.warn("⚠️ Firebase Admin skipped: Missing Environment Variables (project_id, client_email, or private_key).");
+    }
   }
+} catch (error) {
+  console.error("🔥 CRITICAL: Firebase Admin Initialization Failed:", error);
 }
+// ----------------------------------------------
 
 const app = express();
 app.use(express.json());
@@ -545,9 +556,19 @@ const checkGoalsAndNotify = async (liveMatches: any[]) => {
 };
 
 app.get('/robots.txt', (_req, res) => {
-  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, max-age=86400');
-  res.status(200).send(`User-agent: *\nAllow: /\nSitemap: https://e2match.vercel.app/sitemap.xml\n`);
+  try {
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 1 day
+    const content = [
+      'User-agent: *',
+      'Allow: /',
+      'Sitemap: https://e2match.vercel.app/sitemap.xml'
+    ].join('\n');
+    res.status(200).send(content);
+  } catch (error) {
+    console.error("robots.txt Generation Error:", error);
+    res.status(500).setHeader('Content-Type', 'text/plain').send("Error generating robots.txt");
+  }
 });
 
 function seoPage(title: string, description: string, keywords: string, bodyContent: string, canonical: string): string {
@@ -606,11 +627,34 @@ app.get('/live-football-scores', (_req, res) => {
 });
 
 app.get('/sitemap.xml', (_req, res) => {
-  res.setHeader('Content-Type', 'application/xml; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, max-age=86400');
-  const today = new Date().toISOString().split('T')[0];
-  const xml = `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://e2match.vercel.app/</loc><lastmod>${today}</lastmod></url></urlset>`;
-  res.status(200).send(xml);
+  try {
+    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 1 day
+
+    const today = new Date().toISOString().split('T')[0];
+    const baseUrl = 'https://e2match.vercel.app';
+
+    const urls = [
+      '/',
+      '/world-cup-2026',
+      '/ai-football-predictions',
+      '/fantasy-football-ai',
+      '/live-football-scores',
+      '/privacy-policy', // Assuming this page exists or will exist
+      '/terms-of-service', // Assuming this page exists or will exist
+    ];
+
+    const urlset = urls.map(url =>
+      `<url><loc>${baseUrl}${url.startsWith('/') ? url : '/' + url}</loc><lastmod>${today}</lastmod></url>`
+    ).join('');
+
+    const xml = `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urlset}</urlset>`;
+
+    res.status(200).send(xml);
+  } catch (error) {
+    console.error("Sitemap Generation Error:", error);
+    res.status(500).setHeader('Content-Type', 'text/plain').send("Error generating sitemap.");
+  }
 });
 
 if (process.env.NODE_ENV !== 'production') {
