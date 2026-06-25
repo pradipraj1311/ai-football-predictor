@@ -12,12 +12,12 @@ import * as admin from 'firebase-admin';
 try {
   // Check if admin is imported and apps array exists before checking length
   if (admin && admin.apps && admin.apps.length === 0) {
-    
+
     // Check if the environment variables actually exist to prevent crashes
     if (process.env.project_id && process.env.client_email && process.env.private_key) {
-      
+
       const privateKey = process.env.private_key.replace(/\\n/g, '\n');
-      
+
       admin.initializeApp({
         credential: admin.credential.cert({
           projectId: process.env.project_id,
@@ -64,6 +64,14 @@ const checkMaintenance = async (_req: express.Request, res: express.Response, ne
   } catch (e) { console.error("Maintenance check failed:", e); }
   next();
 };
+
+// Maintenance check sirf API routes par j lagavvu, login/maintenance endpoints sivay.
+app.use('/api', (req, res, next) => {
+  if (req.path.startsWith('/login') || req.path.startsWith('/maintenance')) {
+    return next();
+  }
+  checkMaintenance(req, res, next);
+});
 
 const checkAdminPassword = (req: express.Request, res: express.Response, next: express.NextFunction) => {
   const { password } = req.body;
@@ -181,7 +189,7 @@ function normalizeTeamName(name: string): string {
   return normalized.replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
 }
 
-app.get('/api/db-matches', checkMaintenance, async (_req, res) => {
+app.get('/api/db-matches', async (_req, res) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Content-Type': 'application/json',
@@ -261,7 +269,7 @@ app.get('/api/db-matches', checkMaintenance, async (_req, res) => {
   }
 });
 
-app.get('/api/live-matches', checkMaintenance, async (_req, res) => {
+app.get('/api/live-matches', async (_req, res) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Content-Type': 'application/json',
@@ -329,7 +337,7 @@ app.get('/api/live-matches', checkMaintenance, async (_req, res) => {
   return res.status(200).set(corsHeaders).json({ matches: minorLeagueFallback, cached: false, warning: true });
 });
 
-app.get('/api/standings', checkMaintenance, async (req, res) => {
+app.get('/api/standings', async (req, res) => {
   const corsHeaders = { 'Access-Control-Allow-Origin': '*' };
 
   // Default to World Cup 2026 (Tournament: 16, Season: 52186) if no query params provided
@@ -442,7 +450,7 @@ app.post('/api/maintenance', checkAdminPassword, async (req, res) => {
   res.status(200).json({ success: true, maintenance: enabled });
 });
 
-app.get('/api/poll', checkMaintenance, async (_req, res) => {
+app.get('/api/poll', async (_req, res) => {
   const corsHeaders = { 'Access-Control-Allow-Origin': '*' };
   try {
     const client = await pool.connect();
@@ -455,7 +463,7 @@ app.get('/api/poll', checkMaintenance, async (_req, res) => {
   }
 });
 
-app.post('/api/poll/vote', checkMaintenance, async (req, res) => {
+app.post('/api/poll/vote', async (req, res) => {
   const corsHeaders = { 'Access-Control-Allow-Origin': '*' };
   try {
     const { team_id } = req.body;
@@ -472,7 +480,7 @@ app.post('/api/poll/vote', checkMaintenance, async (req, res) => {
 let predictionCache: { [matchId: string]: { data: any; timestamp: number; scoreHash: string } } = {};
 const PREDICT_CACHE_DURATION = 3 * 60 * 1000;
 
-app.post('/api/predict', checkMaintenance, async (req, res) => {
+app.post('/api/predict', async (req, res) => {
   try {
     const { match } = req.body;
     if (!match || !match.id) {
