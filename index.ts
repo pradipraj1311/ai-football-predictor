@@ -3,10 +3,8 @@ import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import { Pool } from 'pg';
 import { getCache, setCache, hasRedis } from './redisCache.js';
-import path from 'path';
-import { fileURLToPath } from 'url';
 
-//  CORRECT FIREBASE MODULAR IMPORTS
+// CORRECT FIREBASE MODULAR IMPORTS
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getMessaging } from 'firebase-admin/messaging';
 
@@ -34,7 +32,7 @@ try {
       console.error("🚨 CRITICAL ERROR: Firebase Environment Variables are missing.");
     }
   } else {
-    isFirebaseInitialized = true; // Already initialized (Warm start)
+    isFirebaseInitialized = true;
   }
 } catch (error) {
   console.error("🚨 CRITICAL: Firebase Admin Initialization Failed:", error);
@@ -55,28 +53,23 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false },
   max: 1,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
+  connectionTimeoutMillis: 10000, 
 });
 
 const checkMaintenance = async (_req: express.Request, res: express.Response, next: express.NextFunction) => {
   try {
     const maintenanceStatus = await getCache('maintenance_mode');
-    if (maintenanceStatus === true) {
+    if (maintenanceStatus === true) { 
       return res.status(503).json({
         message: 'The service is temporarily unavailable due to maintenance. Please try again later.',
         maintenance: true
       });
     }
-  } catch (e) { console.error("Maintenance check failed:", e); }
+  } catch (e) {
+    console.error("Maintenance check failed:", e);
+  }
   next();
 };
-
-app.use('/api', (req, res, next) => {
-  if (req.path.startsWith('/login') || req.path.startsWith('/maintenance') || req.path.startsWith('/test-noti')) {
-    return next();
-  }
-  checkMaintenance(req, res, next);
-});
 
 const checkAdminPassword = (req: express.Request, res: express.Response, next: express.NextFunction) => {
   const { password } = req.body;
@@ -162,6 +155,15 @@ async function fetchAndSaveHighlight(matchId: string, homeTeamName: string, away
 
 let matchCache: { data: any; timestamp: number } | null = null;
 const CACHE_DURATION = 5 * 60 * 1000;
+let inFlightLiveFetch: Promise<any> | null = null;
+let lastSofaFetchAllowed = 0; 
+const SOFA_BACKOFF_BASE = 30 * 1000; 
+const SOFA_FETCH_TIMEOUT = 5 * 1000; 
+let sofa429Count = 0;
+let currentSofaKeyIndex = 0; 
+const SOFA_MAX_BACKOFF = 10 * 60 * 1000; 
+const SOFA_BACKOFF_JITTER = 0.25; 
+const SOFA_MIN_INTERVAL = 60 * 1000; 
 
 const teamNameAliases: { [key: string]: string } = {
   'dr congo': 'congo dr',
@@ -185,11 +187,18 @@ function normalizeTeamName(name: string): string {
   return normalized.replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
 }
 
-app.get('/api/db-matches', async (_req, res) => {
+app.use('/api', (req, res, next) => {
+  if (req.path.startsWith('/login') || req.path.startsWith('/maintenance') || req.path.startsWith('/test-noti')) {
+    return next();
+  }
+  checkMaintenance(req, res, next);
+});
+
+app.get('/api/db-matches', checkMaintenance, async (_req, res) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Content-Type': 'application/json',
-    'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120'
+    'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' 
   };
   if (!process.env.DB_URL) {
     console.warn('DB_URL not set. Returning empty matches.');
@@ -224,7 +233,7 @@ app.get('/api/db-matches', async (_req, res) => {
       return {
         id: row.id,
         competition: row.competition || 'FIFA World Cup 2026',
-        dbStatus: isFinished ? 'FINISHED' : 'SCHEDULED',
+        dbStatus: isFinished ? 'FINISHED' : 'SCHEDULED', 
         time: displayTime || 'TBD',
         date: new Date(row.match_date).toISOString().split('T')[0],
         youtubeHighlightId: ytId || null,
@@ -265,16 +274,17 @@ app.get('/api/db-matches', async (_req, res) => {
   }
 });
 
-app.get('/api/live-matches', async (_req, res) => {
+app.get('/api/live-matches', checkMaintenance, async (_req, res) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Content-Type': 'application/json',
-    'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120'
+    'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' 
   };
 
   const LIVE_CACHE_DURATION = 60 * 1000;
-  const STALE_WHILE_REVALIDATE_WINDOW = 5 * 60 * 1000;
+  const STALE_WHILE_REVALIDATE_WINDOW = 5 * 60 * 1000; 
   const redisKey = 'live-matches:v1';
+  const backoffKey = 'live-matches:backoff-until';
 
   let responseSent = false;
 
@@ -328,9 +338,9 @@ app.get('/api/live-matches', async (_req, res) => {
     h2h: { matchesPlayed: 1, homeWins: 1, awayWins: 0, draws: 0, lastResults: ['W'] }
   }];
 
-  // 🔴 Trigger goal checking and notifications 🔴
-  checkGoalsAndNotify(minorLeagueFallback);
+  // --- TEMP DISABLE RAPIDAPI ---
   return res.status(200).set(corsHeaders).json({ matches: minorLeagueFallback, cached: false, warning: true });
+  // -----------------------------
 });
 
 app.get('/api/standings', async (req, res) => {
@@ -427,7 +437,7 @@ app.get('/api/maintenance', async (_req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
-
+  
   const maintenanceStatus = await getCache('maintenance_mode') || false;
   res.status(200).json({ maintenance: maintenanceStatus });
 });
@@ -437,12 +447,12 @@ app.post('/api/maintenance', checkAdminPassword, async (req, res) => {
   if (typeof enabled !== 'boolean') {
     return res.status(400).json({ message: 'Invalid payload. "enabled" must be a boolean.' });
   }
-  await setCache('maintenance_mode', enabled);
+  await setCache('maintenance_mode', enabled); 
   console.log(`[ADMIN] Server maintenance mode set to: ${enabled ? 'ON' : 'OFF'}`);
   res.status(200).json({ success: true, maintenance: enabled });
 });
 
-app.get('/api/poll', async (_req, res) => {
+app.get('/api/poll', checkMaintenance, async (_req, res) => {
   const corsHeaders = { 'Access-Control-Allow-Origin': '*' };
   try {
     const client = await pool.connect();
@@ -451,11 +461,11 @@ app.get('/api/poll', async (_req, res) => {
     res.status(200).set(corsHeaders).json(result.rows);
   } catch (error) {
     console.error("Poll DB Error:", error);
-    res.status(200).set(corsHeaders).json([]);
+    res.status(200).set(corsHeaders).json([]); 
   }
 });
 
-app.post('/api/poll/vote', async (req, res) => {
+app.post('/api/poll/vote', checkMaintenance, async (req, res) => {
   const corsHeaders = { 'Access-Control-Allow-Origin': '*' };
   try {
     const { team_id } = req.body;
@@ -472,7 +482,7 @@ app.post('/api/poll/vote', async (req, res) => {
 let predictionCache: { [matchId: string]: { data: any; timestamp: number; scoreHash: string } } = {};
 const PREDICT_CACHE_DURATION = 3 * 60 * 1000;
 
-app.post('/api/predict', async (req, res) => {
+app.post('/api/predict', checkMaintenance, async (req, res) => {
   try {
     const { match } = req.body;
     if (!match || !match.id) {
@@ -491,17 +501,18 @@ app.post('/api/predict', async (req, res) => {
       return res.json({ prediction: predictionCache[matchId].data, cached: true });
     }
 
-    return res.json({
-      prediction: {
-        analysis: "AI Analysis is temporarily paused to save API limits.",
+    // --- TEMP DISABLE GEMINI ---
+    return res.json({ 
+      prediction: { 
+        analysis: "AI Analysis is temporarily paused to save API limits.", 
         vulnerabilities: { home: "N/A", away: "N/A" },
         keyMatchups: [],
-        winProbability: { "home": 33, "draw": 34, "away": 33 },
-        suggestedScore: "0-0"
-      },
-      cached: true
+        winProbability: {"home": 33, "draw": 34, "away": 33}, 
+        suggestedScore: "0-0" 
+      }, 
+      cached: true 
     });
-
+    // ---------------------------
   } catch (error: any) {
     res.status(500).json({ error: 'Gemini Analysis Interrupted', details: error.message });
   }
@@ -595,19 +606,9 @@ app.get('/api/test-noti', async (req, res) => {
 
 // --- SEO AND STATIC ROUTES ---
 app.get('/robots.txt', (_req, res) => {
-  try {
-    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 1 day
-    const content = [
-      'User-agent: *',
-      'Allow: /',
-      'Sitemap: https://e2match.vercel.app/sitemap.xml'
-    ].join('\n');
-    res.status(200).send(content);
-  } catch (error) {
-    console.error("robots.txt Generation Error:", error);
-    res.status(500).setHeader('Content-Type', 'text/plain').send("Error generating robots.txt");
-  }
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.status(200).send(`User-agent: *\nAllow: /\nSitemap: https://e2match.vercel.app/sitemap.xml\n`);
 });
 
 function seoPage(title: string, description: string, keywords: string, bodyContent: string, canonical: string): string {
@@ -620,6 +621,34 @@ function seoPage(title: string, description: string, keywords: string, bodyConte
   <meta name="description" content="${description}">
   <meta name="keywords" content="${keywords}">
   <link rel="canonical" href="https://e2match.vercel.app${canonical}">
+
+  <meta property="og:title" content="${title}">
+  <meta property="og:description" content="${description}">
+  <meta property="og:url" content="https://e2match.vercel.app${canonical}">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="https://e2match.vercel.app/og-image.png">
+  <meta property="og:site_name" content="E2Match.ai">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="${title}">
+  <meta name="twitter:description" content="${description}">
+  <meta name="twitter:image" content="https://e2match.vercel.app/og-image.png">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "${title}",
+    "description": "${description}",
+    "url": "https://e2match.vercel.app${canonical}",
+    "publisher": {
+      "@type": "Organization",
+      "name": "E2Match.ai",
+      "url": "https://e2match.vercel.app"
+    }
+  }
+  </script>
+
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0B1121; color: #e2e8f0; min-height: 100vh; }
@@ -627,12 +656,49 @@ function seoPage(title: string, description: string, keywords: string, bodyConte
     .hero { text-align: center; padding: 3rem 1rem 2rem; }
     .hero h1 { font-size: clamp(1.5rem, 4vw, 2.5rem); font-weight: 800; color: #fff; margin-bottom: 1rem; line-height: 1.2; }
     .hero p { font-size: 1.1rem; color: #94a3b8; max-width: 600px; margin: 0 auto 2rem; }
+    .cta-btn { display: inline-block; background: linear-gradient(135deg, #4F46E5, #7C3AED); color: #fff; padding: 0.9rem 2rem; border-radius: 12px; text-decoration: none; font-weight: 700; font-size: 1rem; margin: 0.5rem; transition: opacity 0.2s; }
+    .cta-btn:hover { opacity: 0.9; }
+    .badge { display: inline-block; background: rgba(99,102,241,0.15); border: 1px solid rgba(99,102,241,0.3); color: #818CF8; padding: 0.3rem 0.8rem; border-radius: 20px; font-size: 0.8rem; font-weight: 600; margin-bottom: 1rem; }
+    .section { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 1.5rem; margin-bottom: 1.5rem; }
+    .section h2 { font-size: 1.3rem; font-weight: 700; color: #fff; margin-bottom: 1rem; }
+    .section p { color: #94a3b8; line-height: 1.7; margin-bottom: 0.75rem; }
+    .section ul { color: #94a3b8; padding-left: 1.5rem; line-height: 2; }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+    .stat { background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.2); border-radius: 12px; padding: 1rem; text-align: center; }
+    .stat-val { font-size: 1.8rem; font-weight: 800; color: #818CF8; }
+    .stat-lbl { font-size: 0.8rem; color: #64748b; margin-top: 0.25rem; }
+    .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; }
+    .feature { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 1rem; }
+    .feature h3 { font-size: 1rem; font-weight: 600; color: #e2e8f0; margin-bottom: 0.5rem; }
+    .feature p { font-size: 0.875rem; color: #64748b; line-height: 1.5; }
+    nav { background: rgba(11,17,33,0.95); border-bottom: 1px solid rgba(255,255,255,0.06); padding: 1rem 2rem; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+    .nav-brand { font-size: 1.2rem; font-weight: 800; color: #fff; text-decoration: none; }
+    .nav-brand span { color: #818CF8; }
+    .nav-link { color: #94a3b8; text-decoration: none; font-size: 0.9rem; }
+    footer { text-align: center; padding: 2rem; color: #475569; font-size: 0.85rem; border-top: 1px solid rgba(255,255,255,0.06); margin-top: 3rem; }
+    footer a { color: #64748b; text-decoration: none; margin: 0 0.5rem; }
   </style>
 </head>
 <body>
+  <nav>
+    <a href="/" class="nav-brand">E2Match<span>.ai</span></a>
+    <a href="/" class="nav-link">← Live App</a>
+  </nav>
+
   <div class="container">
     ${bodyContent}
   </div>
+
+  <footer>
+    <p>© 2026 E2Match.ai by E2Soft. All rights reserved.</p>
+    <p style="margin-top:0.5rem">
+      <a href="/">Home</a>
+      <a href="/privacy-policy">Privacy Policy</a>
+      <a href="/terms-of-service">Terms of Service</a>
+      <a href="/world-cup-2026">World Cup 2026</a>
+      <a href="/ai-football-predictions">AI Predictions</a>
+    </p>
+  </footer>
 </body>
 </html>`;
 }
@@ -640,74 +706,332 @@ function seoPage(title: string, description: string, keywords: string, bodyConte
 app.get('/world-cup-2026', (_req, res) => {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'public, max-age=3600');
-  const body = `<div class="hero"><h1>FIFA World Cup 2026 Live Updates</h1></div>`;
-  res.status(200).send(seoPage('FIFA World Cup 2026', 'Live scores', 'world cup 2026', body, '/world-cup-2026'));
+
+  const body = `
+    <div class="hero">
+      <span class="badge">⚽ LIVE NOW</span>
+      <h1>FIFA World Cup 2026 — Live Scores, Predictions & AI Analysis</h1>
+      <p>Real-time scores, AI-powered match predictions, group standings, and expert analysis for all 104 matches of FIFA World Cup 2026 in USA, Canada & Mexico.</p>
+      <a href="/" class="cta-btn">🤖 Get AI Predictions Live</a>
+      <a href="/?tab=standings" class="cta-btn" style="background: rgba(99,102,241,0.2); border: 1px solid rgba(99,102,241,0.4);">📊 View Standings</a>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat"><div class="stat-val">48</div><div class="stat-lbl">Teams</div></div>
+      <div class="stat"><div class="stat-val">104</div><div class="stat-lbl">Matches</div></div>
+      <div class="stat"><div class="stat-val">12</div><div class="stat-lbl">Groups</div></div>
+      <div class="stat"><div class="stat-val">3</div><div class="stat-lbl">Host Countries</div></div>
+    </div>
+
+    <div class="section">
+      <h2>World Cup 2026 — AI Match Predictions</h2>
+      <p>E2Match.ai uses Google Gemini AI to analyze every World Cup 2026 match in real time. Unlike basic prediction tools that show just percentages, our AI explains <strong>why</strong> a team will win — covering tactical formations, player form, head-to-head history, and key matchups.</p>
+      <p>With 48 teams from 6 confederations competing across 16 host cities in the USA, Canada, and Mexico, World Cup 2026 is the biggest football tournament in history. Our AI covers every single match — from Group A opener on June 11 to the Final at MetLife Stadium on July 19, 2026.</p>
+    </div>
+
+    <div class="section">
+      <h2>World Cup 2026 Groups & Favorites</h2>
+      <p>Spain lead the World Cup 2026 odds as favorites, followed by France, England, and Brazil. Argentina are the reigning champions looking to defend their 2022 title. Host nations USA, Canada, and Mexico are all expected to advance from the group stage.</p>
+      <ul>
+        <li>Group A: Mexico, South Africa, South Korea, Czechia</li>
+        <li>Group B: Canada, Switzerland, Qatar, Bosnia</li>
+        <li>Group C: Brazil, Morocco, Scotland, Jamaica</li>
+        <li>Group D: USA, Paraguay, Netherlands, Angola</li>
+        <li>Group E: Argentina, Italy, Ivory Coast, New Zealand</li>
+        <li>Group F: France, Colombia, Japan, Honduras</li>
+        <li>Group G: England, Uruguay, Nigeria, UAE</li>
+        <li>Group H: Spain, Senegal, Australia, Panama</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <h2>Features Available on E2Match.ai</h2>
+      <div class="feature-grid">
+        <div class="feature"><h3>🤖 AI Analysis</h3><p>Gemini AI explains every match prediction with tactical depth — not just odds.</p></div>
+        <div class="feature"><h3>⚽ Live Scores</h3><p>Real-time scores from all 104 World Cup matches plus 500+ other competitions.</p></div>
+        <div class="feature"><h3>📊 Group Standings</h3><p>Live group tables updating after every match result.</p></div>
+        <div class="feature"><h3>🎯 Fantasy Advice</h3><p>AI-powered captain picks and best XI suggestions for World Cup Fantasy.</p></div>
+        <div class="feature"><h3>🧠 Daily Quiz</h3><p>AI-generated football trivia with global leaderboard.</p></div>
+        <div class="feature"><h3>🔔 Goal Alerts</h3><p>Real-time goal notifications for matches you follow.</p></div>
+      </div>
+    </div>`;
+
+  res.status(200).send(seoPage(
+    'FIFA World Cup 2026 — Live Scores, AI Predictions & Standings | E2Match.ai',
+    'Live scores, AI-powered predictions, and expert analysis for all 104 matches of FIFA World Cup 2026. Free, no signup required.',
+    'world cup 2026, fifa world cup 2026, world cup predictions, world cup live scores, world cup standings 2026',
+    body,
+    '/world-cup-2026'
+  ));
 });
 
 app.get('/ai-football-predictions', (_req, res) => {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'public, max-age=3600');
-  const body = `<div class="hero"><h1>AI Football Predictions</h1></div>`;
-  res.status(200).send(seoPage('AI Football Predictions', 'AI Predictions', 'ai football', body, '/ai-football-predictions'));
+
+  const body = `
+    <div class="hero">
+      <span class="badge">🤖 AI POWERED</span>
+      <h1>AI Football Predictions — Match Analysis Powered by Google Gemini</h1>
+      <p>Get intelligent, natural language match predictions for every football game. Our AI explains tactics, key matchups, and win probabilities — not just numbers.</p>
+      <a href="/" class="cta-btn">🔮 Get Today's Predictions</a>
+    </div>
+
+    <div class="section">
+      <h2>How Our AI Football Predictions Work</h2>
+      <p>E2Match.ai uses Google Gemini — one of the world's most advanced AI models — to analyze every football match. We combine live match data from 500+ competitions with AI to generate predictions that explain the "why" behind every result.</p>
+      <p>Our AI considers: recent form (last 5 matches), head-to-head history, home vs away performance, key player availability, tactical formations, and momentum indicators. The result is a prediction that reads like expert analysis, not a betting algorithm.</p>
+    </div>
+
+    <div class="section">
+      <h2>What Makes E2Match.ai Different</h2>
+      <ul>
+        <li><strong>Natural language analysis</strong> — "Brazil's high press will exploit Argentina's slow center-backs" not just "Brazil 65%"</li>
+        <li><strong>Key matchup identification</strong> — Which player battles will decide the game</li>
+        <li><strong>Vulnerability analysis</strong> — Tactical weaknesses of both teams exposed</li>
+        <li><strong>Fantasy advice</strong> — Captain picks and differential suggestions</li>
+        <li><strong>Free to use</strong> — No signup, no payment required</li>
+        <li><strong>500+ competitions</strong> — World Cup, Premier League, La Liga, UCL, and more</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <h2>Today's Top Football Predictions</h2>
+      <p>Visit E2Match.ai for live AI predictions on every match happening today. Our predictions update in real time as match conditions change — including in-game analysis during live matches.</p>
+      <a href="/" class="cta-btn">View Today's Predictions →</a>
+    </div>`;
+
+  res.status(200).send(seoPage(
+    'AI Football Predictions — Free Match Analysis by Google Gemini | E2Match.ai',
+    'Free AI-powered football predictions for World Cup 2026, Premier League, La Liga, and 500+ competitions. Natural language analysis, not just odds.',
+    'ai football predictions, football prediction today, match prediction ai, football analysis ai, world cup predictions ai',
+    body,
+    '/ai-football-predictions'
+  ));
+});
+
+const WC_MATCHES: { [slug: string]: { home: string; away: string; group: string; date: string; homeOdds: number; drawOdds: number; awayOdds: number; analysis: string } } = {
+  'brazil-vs-morocco': { home: 'Brazil', away: 'Morocco', group: 'Group C', date: 'June 2026', homeOdds: 62, drawOdds: 22, awayOdds: 16, analysis: "Brazil enter as heavy favorites with Vinicius Jr in red-hot form. Morocco, Africa's 2022 semi-finalists, will defend deep and hit on the counter. Brazil's fullback-heavy system may leave gaps for Morocco's pacey wingers." },
+  'england-vs-nigeria': { home: 'England', away: 'Nigeria', group: 'Group G', date: 'June 2026', homeOdds: 68, drawOdds: 18, awayOdds: 14, analysis: "England are strong favorites at home on North American soil. Nigeria's Super Eagles are dangerous on transitions but England's midfield depth should control possession. Bellingham and Saka are key threats." },
+  'france-vs-japan': { home: 'France', away: 'Japan', group: 'Group F', date: 'June 2026', homeOdds: 72, drawOdds: 18, awayOdds: 10, analysis: "France are World Cup favorites and should dominate possession. Japan's organized 4-3-3 defensive shape caused problems in 2022, but France's individual quality at every position is too strong to contain." },
+  'spain-vs-senegal': { home: 'Spain', away: 'Senegal', group: 'Group H', date: 'June 2026', homeOdds: 65, drawOdds: 20, awayOdds: 15, analysis: "Spain's tiki-taka system will dominate the ball but Senegal's physical midfield and Sadio Mane's experience make this dangerous. Spain must avoid counter-attacking exposure from their high defensive line." },
+  'argentina-vs-italy': { home: 'Argentina', away: 'Italy', group: 'Group E', date: 'June 2026', homeOdds: 55, drawOdds: 25, awayOdds: 20, analysis: "A dream match between Messi's Argentina and Italy's Azzurri. Argentina's fluid attacking system against Italy's defensive organization. Messi vs Donnarumma is the key battle. Argentina's experience as reigning champions gives them the edge." },
+  'usa-vs-paraguay': { home: 'USA', away: 'Paraguay', group: 'Group D', date: 'June 2026', homeOdds: 58, drawOdds: 24, awayOdds: 18, analysis: "USA benefit from massive home support on their own soil. Paraguay's physical pressing game can unsettle USA's build-up but Christian Pulisic's threat from wide areas should be decisive." },
+  'germany-vs-iran': { home: 'Germany', away: 'Iran', group: 'Group I', date: 'June 2026', homeOdds: 78, drawOdds: 14, awayOdds: 8, analysis: "Germany are heavy favorites with superior technical quality throughout the squad. Iran will defend in a low 4-5-1 block but Germany's press and quick combinations should find gaps early." },
+  'mexico-vs-south-korea': { home: 'Mexico', away: 'South Korea', group: 'Group A', date: 'June 2026', homeOdds: 52, drawOdds: 26, awayOdds: 22, analysis: "An evenly matched battle between two technically gifted sides. Mexico's home advantage in North America is significant. South Korea's pressing intensity can cause problems but Mexico's experience in tournament football is decisive." },
+  'portugal-vs-croatia': { home: 'Portugal', away: 'Croatia', group: 'Group J', date: 'June 2026', homeOdds: 55, drawOdds: 24, awayOdds: 21, analysis: "Portugal without Ronaldo face a battle-hardened Croatia side. Modric's experience and Croatia's counter-attacking system make this a potential upset. Portugal's attacking depth through Bruno Fernandes should be enough." },
+  'netherlands-vs-angola': { home: 'Netherlands', away: 'Angola', group: 'Group D', date: 'June 2026', homeOdds: 82, drawOdds: 12, awayOdds: 6, analysis: "Netherlands are overwhelming favorites. Van Dijk's defensive leadership and the Dutch attacking trio should dominate comfortably. Angola's debut at a major tournament means limited big-game experience." },
+};
+
+app.get('/predictions/:matchSlug', (req, res) => {
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+
+  const slug = req.params.matchSlug.toLowerCase().replace(/_/g, '-');
+  const match = WC_MATCHES[slug];
+
+  if (match) {
+    const body = `
+      <div class="hero">
+        <span class="badge">⚽ FIFA WORLD Cup 2026 — ${match.group}</span>
+        <h1>${match.home} vs ${match.away} Prediction — World Cup 2026</h1>
+        <p>AI-powered prediction, tactical analysis, and win probability for ${match.home} vs ${match.away} at FIFA World Cup 2026.</p>
+        <a href="/" class="cta-btn">🤖 Get Live AI Prediction</a>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat"><div class="stat-val">${match.homeOdds}%</div><div class="stat-lbl">${match.home} Win</div></div>
+        <div class="stat"><div class="stat-val">${match.drawOdds}%</div><div class="stat-lbl">Draw</div></div>
+        <div class="stat"><div class="stat-val">${match.awayOdds}%</div><div class="stat-lbl">${match.away} Win</div></div>
+      </div>
+
+      <div class="section">
+        <h2>AI Tactical Analysis — ${match.home} vs ${match.away}</h2>
+        <p>${match.analysis}</p>
+        <p>For real-time AI analysis that updates as the match progresses, including live tactical adjustments, key player ratings, and fantasy advice — visit E2Match.ai.</p>
+        <a href="/" class="cta-btn">View Live Analysis →</a>
+      </div>
+
+      <div class="section">
+        <h2>About This Prediction</h2>
+        <p>This prediction is generated by E2Match.ai's AI system powered by Google Gemini. Our AI analyzes team form, head-to-head records, tactical setups, and player availability to provide expert-level match analysis.</p>
+        <p>E2Match.ai covers all ${match.group} matches and all 104 FIFA World Cup 2026 games. Get live predictions, real-time scores, group standings, and fantasy advice — all free, no signup required.</p>
+      </div>`;
+
+    res.status(200).send(seoPage(
+      `${match.home} vs ${match.away} Prediction — World Cup 2026 AI Analysis | E2Match.ai`,
+      `AI prediction for ${match.home} vs ${match.away} at FIFA World Cup 2026. Win probability: ${match.home} ${match.homeOdds}%, Draw ${match.drawOdds}%, ${match.away} ${match.awayOdds}%. Free tactical analysis.`,
+      `${match.home} vs ${match.away} prediction, ${match.home} vs ${match.away} 2026, world cup 2026 prediction, ${match.home.toLowerCase()} prediction, ${match.away.toLowerCase()} prediction`,
+      body,
+      `/predictions/${slug}`
+    ));
+  } else {
+    const teams = slug.split('-vs-');
+    const home = teams[0]?.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) || 'Home Team';
+    const away = teams[1]?.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) || 'Away Team';
+
+    const body = `
+      <div class="hero">
+        <span class="badge">⚽ FOOTBALL PREDICTION</span>
+        <h1>${home} vs ${away} Prediction & AI Analysis</h1>
+        <p>Get AI-powered prediction and tactical analysis for ${home} vs ${away}. Live win probabilities, key matchups, and fantasy advice.</p>
+        <a href="/" class="cta-btn">🤖 Get Live AI Prediction</a>
+      </div>
+      <div class="section">
+        <h2>AI Match Prediction</h2>
+        <p>E2Match.ai provides AI-powered predictions for football matches worldwide including World Cup 2026, Premier League, La Liga, Champions League, and 500+ competitions. Visit our live app for real-time analysis of ${home} vs ${away}.</p>
+        <a href="/" class="cta-btn">View Live Prediction →</a>
+      </div>`;
+
+    res.status(200).send(seoPage(
+      `${home} vs ${away} Prediction — AI Football Analysis | E2Match.ai`,
+      `AI-powered prediction for ${home} vs ${away}. Win probabilities, tactical analysis, and fantasy advice. Free on E2Match.ai.`,
+      `${home} vs ${away} prediction, football prediction, ai prediction football`,
+      body,
+      `/predictions/${slug}`
+    ));
+  }
 });
 
 app.get('/fantasy-football-ai', (_req, res) => {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'public, max-age=3600');
-  const body = `<div class="hero"><h1>Free AI Fantasy Football Advice</h1></div>`;
-  res.status(200).send(seoPage('Fantasy Football AI', 'Fantasy Football', 'fantasy football', body, '/fantasy-football-ai'));
+
+  const body = `
+    <div class="hero">
+      <span class="badge">🎯 FANTASY ADVISOR</span>
+      <h1>Free AI Fantasy Football Advice — Captain Picks, Best XI & Transfer Tips</h1>
+      <p>Get AI-powered fantasy football advice for World Cup 2026 Fantasy, FPL, UCL Fantasy, and more. Free captain picks, differential suggestions, and Best XI every gameweek.</p>
+      <a href="/" class="cta-btn">🎯 Get AI Fantasy Advice</a>
+    </div>
+
+    <div class="section">
+      <h2>World Cup 2026 Fantasy Football — AI Strategy</h2>
+      <p>With 48 teams and 104 matches, World Cup 2026 Fantasy is the biggest fantasy football game ever. Our AI analyzes every match to give you the best captain picks, differential players, and transfer suggestions.</p>
+      <ul>
+        <li><strong>Captain picks</strong> — AI identifies the highest expected point scorer each gameweek</li>
+        <li><strong>Differentials</strong> — High-value, low-ownership players who can win you your mini-league</li>
+        <li><strong>Transfer advice</strong> — Which players to bring in based on upcoming fixtures</li>
+        <li><strong>Best XI builder</strong> — Optimal lineup from your existing squad</li>
+        <li><strong>Injury alerts</strong> — Key player availability updates before deadline</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <h2>Why Use AI for Fantasy Football?</h2>
+      <p>Traditional fantasy advice relies on human opinion. E2Match.ai uses Google Gemini AI to analyze tactical data, form metrics, and fixture difficulty simultaneously — giving you an analytical edge over your mini-league rivals.</p>
+      <a href="/" class="cta-btn">Start Getting AI Advice →</a>
+    </div>`;
+
+  res.status(200).send(seoPage(
+    'Free AI Fantasy Football Advice — World Cup 2026 Captain Picks & Best XI | E2Match.ai',
+    'Free AI fantasy football advice for World Cup 2026. Captain picks, differential suggestions, best XI builder, and transfer tips powered by Google Gemini AI.',
+    'fantasy football ai, fpl ai advice, world cup fantasy 2026, fantasy football captain picks, ai fantasy football predictions',
+    body,
+    '/fantasy-football-ai'
+  ));
 });
 
 app.get('/live-football-scores', (_req, res) => {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'public, max-age=300');
-  const body = `<div class="hero"><h1>Live Football Scores</h1></div>`;
-  res.status(200).send(seoPage('Live Football Scores', 'Live Scores', 'live scores', body, '/live-football-scores'));
+
+  const body = `
+    <div class="hero">
+      <span class="badge">🔴 LIVE</span>
+      <h1>Live Football Scores Today — World Cup 2026 & All Major Leagues</h1>
+      <p>Real-time football scores from FIFA World Cup 2026, Premier League, La Liga, Bundesliga, Serie A, Ligue 1, Champions League, and 500+ competitions worldwide.</p>
+      <a href="/" class="cta-btn">⚽ View Live Scores Now</a>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat"><div class="stat-val">500+</div><div class="stat-lbl">Competitions</div></div>
+      <div class="stat"><div class="stat-val">Live</div><div class="stat-lbl">Updates</div></div>
+      <div class="stat"><div class="stat-val">Free</div><div class="stat-lbl">No Signup</div></div>
+      <div class="stat"><div class="stat-val">104</div><div class="stat-lbl">WC Matches</div></div>
+    </div>
+
+    <div class="section">
+      <h2>Live Scores + AI Analysis — Only on E2Match.ai</h2>
+      <p>E2Match.ai is the only live scores platform that combines real-time match data with AI-powered tactical analysis. While other platforms show you scores, we explain what's happening on the pitch — formation changes, momentum shifts, and key player matchups.</p>
+      <p>Available for: FIFA World Cup 2026, UEFA Champions League, Premier League, La Liga, Bundesliga, Serie A, Ligue 1, and 500+ competitions worldwide.</p>
+      <a href="/" class="cta-btn">View Live Scores + AI Analysis →</a>
+    </div>`;
+
+  res.status(200).send(seoPage(
+    'Live Football Scores Today — World Cup 2026 & All Leagues | E2Match.ai',
+    'Real-time football scores for World Cup 2026, Premier League, La Liga, Champions League, and 500+ competitions. Plus AI match analysis. Free.',
+    'live football scores, football scores today, world cup 2026 scores, live scores football, football results today',
+    body,
+    '/live-football-scores'
+  ));
 });
 
 app.get('/sitemap.xml', (_req, res) => {
-  try {
-    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
-    res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 1 day
+  res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=86400');
 
-    const today = new Date().toISOString().split('T')[0];
-    const baseUrl = 'https://e2match.vercel.app';
+  const today = new Date().toISOString().split('T')[0];
 
-    const urls = [
-      '/',
-      '/world-cup-2026',
-      '/ai-football-predictions',
-      '/fantasy-football-ai',
-      '/live-football-scores',
-      '/privacy-policy',
-      '/terms-of-service',
-    ];
+  const matchSlugs = Object.keys(WC_MATCHES);
 
-    const urlset = urls.map(url =>
-      `<url><loc>${baseUrl}${url.startsWith('/') ? url : '/' + url}</loc><lastmod>${today}</lastmod></url>`
-    ).join('');
+  const matchUrls = matchSlugs.map(slug => `
+  <url>
+    <loc>https://e2match.vercel.app/predictions/${slug}</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>`).join('');
 
-    const xml = `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urlset}</urlset>`;
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 
-    res.status(200).send(xml);
-  } catch (error) {
-    console.error("Sitemap Generation Error:", error);
-    res.status(500).setHeader('Content-Type', 'text/plain').send("Error generating sitemap.");
-  }
-});
+  <url>
+    <loc>https://e2match.vercel.app/</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>hourly</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://e2match.vercel.app/world-cup-2026</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>hourly</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://e2match.vercel.app/ai-football-predictions</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://e2match.vercel.app/live-football-scores</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>hourly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://e2match.vercel.app/fantasy-football-ai</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://e2match.vercel.app/privacy-policy</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://e2match.vercel.app/terms-of-service</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  ${matchUrls}
+</urlset>`;
 
-// --- SERVE THE REACT/VITE FRONTEND ---
-
-// Set __dirname for use in ES modules
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Serve the 'dist' folder built for production
-app.use(express.static(path.join(__dirname, 'dist')));
-
-// For any unknown route, serve the main index.html (for client-side routing)
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'dist/index.html'));
+  res.status(200).send(xml);
 });
 
 if (process.env.NODE_ENV !== 'production') {
