@@ -3,6 +3,8 @@ import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import { Pool } from 'pg';
 import { getCache, setCache, hasRedis } from './redisCache.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 // 🔴 100% CORRECT FIREBASE MODULAR IMPORTS 🔴
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
@@ -692,6 +694,22 @@ app.get('/sitemap.xml', (_req, res) => {
     console.error("Sitemap Generation Error:", error);
     res.status(500).setHeader('Content-Type', 'text/plain').send("Error generating sitemap.");
   }
+});
+
+// --- SERVE FRONTEND (React/Vite Build) ---
+// This section must be placed AFTER all API routes to avoid overriding them.
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Serve static files from the 'dist' folder (your Vite build output).
+app.use(express.static(path.join(__dirname, '../dist')));
+
+// For any request that doesn't match a static file or an API route,
+// send back the main index.html file. This is required for client-side
+// routing (e.g., React Router) to work.
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../dist/index.html'));
 });
 
 if (process.env.NODE_ENV !== 'production') {
