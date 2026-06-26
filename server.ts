@@ -6,38 +6,50 @@ import { getCache, setCache, hasRedis } from './redisCache.js';
 
 dotenv.config();
 
-// --- INITIALIZE FIREBASE ADMIN (FORCE MODE) ---
+// --- INITIALIZE FIREBASE ADMIN (SINGLETON, SERVERLESS-SAFE) ---
 import * as admin from 'firebase-admin';
-import { getMessaging } from 'firebase-admin/messaging';
+import { getMessaging, Messaging } from 'firebase-admin/messaging';
 
-try {
-  // Directly check if an app is initialized or not
-  if (!admin.apps.length) {
+function initializeFirebaseApp(): admin.app.App | null {
+  // If an app is already initialized, return it. This is for warm serverless function invocations.
+  if (admin.apps.length > 0) {
+    return admin.apps[0]!;
+  }
 
-    // Directly get the keys from Environment Variables (whatever they might contain)
+  // Otherwise, create a new app. This is for cold starts.
+  try {
     const projectId = process.env.project_id || '';
     const clientEmail = process.env.client_email || '';
-    // Important: Convert \n from Vercel's key into a real \n
     const privateKey = (process.env.private_key || '').replace(/\\n/g, '\n');
 
     if (projectId && clientEmail && privateKey) {
-      admin.initializeApp({
+      const app = admin.initializeApp({
         credential: admin.credential.cert({
-          projectId: projectId,
-          clientEmail: clientEmail,
-          privateKey: privateKey,
+          projectId,
+          clientEmail,
+          privateKey,
         }),
       });
-      console.log("🔥 Firebase Admin Initialized Successfully! (Force Mode)");
+      console.log("🔥 Firebase Admin Initialized Successfully! (Serverless-Safe)");
+      return app;
     } else {
       console.error("🚨 CRITICAL ERROR: Firebase Environment Variables are missing or empty in Vercel!");
-      // Print which key is missing for the developer to know (not the private data)
       console.log(`Debug -> projectId: ${!!projectId}, clientEmail: ${!!clientEmail}, privateKey: ${!!privateKey}`);
+      return null;
     }
+  } catch (error) {
+    console.error("🚨 CRITICAL: Firebase Admin Initialization Failed:", error);
+    return null;
   }
-} catch (error) {
-  console.error("🚨 CRITICAL: Firebase Admin Initialization Failed:", error);
 }
+
+// Initialize the app. This will be cached across invocations in a warm serverless function.
+const firebaseApp = initializeFirebaseApp();
+
+// A safe getter for the messaging service that uses the initialized app.
+const getSafeMessaging = (): Messaging | null => {
+  return firebaseApp ? getMessaging(firebaseApp) : null;
+};
 // ----------------------------------------------
 
 const app = express();
@@ -530,7 +542,13 @@ const sendFirebaseTopicNotification = async (topic: string, title: string, body:
   };
 
   try {
-    const response = await getMessaging().send(message);
+    // Use the safe getter to ensure Firebase is initialized.
+    const messaging = getSafeMessaging();
+    if (!messaging) {
+      console.error("Aborting notification send: Firebase Messaging is not available.");
+      return;
+    }
+    const response = await messaging.send(message);
     console.log(`Successfully sent message to topic ${topic}:`, response);
   } catch (error) {
     console.error(`Error sending message to topic ${topic}:`, error);
