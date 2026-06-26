@@ -144,6 +144,22 @@ function seoPage(title: string, description: string, keywords: string, bodyConte
   </html>`;
 }
 
+app.get('/robots.txt', (_req, res) => {
+    try {
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 1 day
+        const content = [
+            'User-agent: *',
+            'Allow: /',
+            'Sitemap: https://e2match.vercel.app/sitemap.xml'
+        ].join('\n');
+        res.status(200).send(content);
+    } catch (error) {
+        console.error("robots.txt Generation Error:", error);
+        res.status(500).setHeader('Content-Type', 'text/plain').send("Error generating robots.txt");
+    }
+});
+
 app.get('/sitemap.xml', (_req, res) => {
     res.setHeader('Content-Type', 'application/xml; charset=utf-8');
     res.setHeader('Cache-Control', 'public, max-age=86400');

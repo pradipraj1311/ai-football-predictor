@@ -2,7 +2,7 @@
   "version": 2,
   "builds": [
     {
-      "src": "server.ts",
+      "src": "index.ts",
       "use": "@vercel/node"
     },
     {
@@ -16,35 +16,35 @@
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "/server.ts"
+      "dest": "/index.ts"
     },
     {
       "src": "/sitemap.xml",
-      "dest": "/server.ts"
+      "dest": "/index.ts"
     },
     {
       "src": "/robots.txt",
-      "dest": "/server.ts"
+      "dest": "/index.ts"
     },
     {
       "src": "/world-cup-2026",
-      "dest": "/server.ts"
+      "dest": "/index.ts"
     },
     {
       "src": "/ai-football-predictions",
-      "dest": "/server.ts"
+      "dest": "/index.ts"
     },
     {
       "src": "/live-football-scores",
-      "dest": "/server.ts"
+      "dest": "/index.ts"
     },
     {
       "src": "/fantasy-football-ai",
-      "dest": "/server.ts"
+      "dest": "/index.ts"
     },
     {
       "src": "/predictions/(.*)",
-      "dest": "/server.ts"
+      "dest": "/index.ts"
     },
     {
       "src": "/(.*)",
