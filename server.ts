@@ -6,31 +6,37 @@ import { getCache, setCache, hasRedis } from './redisCache.js';
 
 dotenv.config();
 
-// --- INITIALIZE FIREBASE ADMIN (SAFE AND MODULAR MODE) ---
+// --- INITIALIZE FIREBASE ADMIN (FORCE MODE) ---
 import * as admin from 'firebase-admin';
 import { getMessaging } from 'firebase-admin/messaging';
 
 try {
-  // Check if admin is imported and apps array exists before checking length
-  if (admin && admin.apps && admin.apps.length === 0) {
-    // Check if the environment variables actually exist to prevent crashes
-    if (process.env.project_id && process.env.client_email && process.env.private_key) {
-      const privateKey = process.env.private_key.replace(/\\n/g, '\n');
+  // Directly check if an app is initialized or not
+  if (!admin.apps.length) {
 
+    // Directly get the keys from Environment Variables (whatever they might contain)
+    const projectId = process.env.project_id || '';
+    const clientEmail = process.env.client_email || '';
+    // Important: Convert \n from Vercel's key into a real \n
+    const privateKey = (process.env.private_key || '').replace(/\\n/g, '\n');
+
+    if (projectId && clientEmail && privateKey) {
       admin.initializeApp({
         credential: admin.credential.cert({
-          projectId: process.env.project_id,
-          clientEmail: process.env.client_email,
+          projectId: projectId,
+          clientEmail: clientEmail,
           privateKey: privateKey,
         }),
       });
-      console.log("Firebase Admin Initialized Successfully!");
+      console.log("🔥 Firebase Admin Initialized Successfully! (Force Mode)");
     } else {
-      console.warn("⚠️ Firebase Admin skipped: Missing Environment Variables (project_id, client_email, or private_key).");
+      console.error("🚨 CRITICAL ERROR: Firebase Environment Variables are missing or empty in Vercel!");
+      // Print which key is missing for the developer to know (not the private data)
+      console.log(`Debug -> projectId: ${!!projectId}, clientEmail: ${!!clientEmail}, privateKey: ${!!privateKey}`);
     }
   }
 } catch (error) {
-  console.error("🔥 CRITICAL: Firebase Admin Initialization Failed:", error);
+  console.error("🚨 CRITICAL: Firebase Admin Initialization Failed:", error);
 }
 // ----------------------------------------------
 
@@ -665,8 +671,8 @@ app.get('/sitemap.xml', (_req, res) => {
       '/ai-football-predictions',
       '/fantasy-football-ai',
       '/live-football-scores',
-      '/privacy-policy', 
-      '/terms-of-service', 
+      '/privacy-policy',
+      '/terms-of-service',
     ];
 
     const urlset = urls.map(url =>
