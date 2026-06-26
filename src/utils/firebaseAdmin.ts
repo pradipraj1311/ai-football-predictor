@@ -6,60 +6,55 @@ let firebaseAppInstance: admin.app.App | null = null;
 
 function initializeFirebaseApp(): admin.app.App {
     // This function now either returns a valid app or throws a detailed error.
-    // It no longer returns null.
-    try {
-        // The official and most reliable way to get the instance is admin.app().
-        // This will throw if no app is initialized.
-        console.log("Attempting to get existing Firebase app instance...");
-        const existingApp = admin.app();
+
+    // 1. Use the cached instance if available (for subsequent requests in a warm container).
+    if (firebaseAppInstance) {
+        return firebaseAppInstance;
+    }
+
+    // 2. Check the global admin namespace for existing apps (for the first request in a warm container).
+    // This is the most reliable serverless pattern, avoiding the unreliable admin.app() in some environments.
+    if (admin.apps && admin.apps.length > 0) {
         console.log("🔥 Firebase Admin already initialized (Warm Start). Reusing instance.");
-        return existingApp;
-    } catch (error: any) {
-        // Error "app/no-app" is expected on a cold start.
-        if (error.code === 'app/no-app') {
-            console.log("No existing app found. Initializing Firebase Admin (Cold Start)...");
+        firebaseAppInstance = admin.apps[0]!; // Use the existing default app.
+        return firebaseAppInstance;
+    }
 
-            const projectId = process.env.project_id;
-            const clientEmail = process.env.client_email;
-            // Use optional chaining for safety
-            const privateKey = process.env.private_key?.replace(/\\n/g, '\n');
+    // 3. If no app exists, this is a cold start. Initialize a new app.
+    console.log("No existing app found. Initializing Firebase Admin (Cold Start)...");
 
-            if (!projectId || !clientEmail || !privateKey) {
-                console.error("🚨 CRITICAL ERROR: Firebase Environment Variables are missing.");
-                console.error(`Debug -> Has projectId: ${!!projectId}, Has clientEmail: ${!!clientEmail}, Has privateKey: ${!!process.env.private_key}`);
-                throw new Error("Firebase credentials are not configured in environment variables.");
-            }
+    const projectId = process.env.project_id;
+    const clientEmail = process.env.client_email;
+    const privateKey = process.env.private_key?.replace(/\\n/g, '\n');
 
-            try {
-                const newApp = admin.initializeApp({
-                    credential: admin.credential.cert({
-                        projectId,
-                        clientEmail,
-                        privateKey,
-                    }),
-                });
-                console.log("✅ Firebase Admin Initialized Successfully!");
-                return newApp;
-            } catch (initError: any) {
-                console.error("🚨 CRITICAL: Firebase admin.initializeApp() failed during cold start:", initError);
-                throw new Error(`Firebase initialization failed: ${initError.message}`);
-            }
-        } else {
-            // Some other unexpected error occurred when calling admin.app()
-            console.error("🚨 CRITICAL: Unexpected error during Firebase app retrieval:", error);
-            throw new Error(`Firebase app retrieval failed: ${error.message}`);
-        }
+    if (!projectId || !clientEmail || !privateKey) {
+        console.error("🚨 CRITICAL ERROR: Firebase Environment Variables are missing.");
+        console.error(`Debug -> Has projectId: ${!!projectId}, Has clientEmail: ${!!clientEmail}, Has privateKey: ${!!process.env.private_key}`);
+        throw new Error("Firebase credentials are not configured in environment variables.");
+    }
+
+    try {
+        firebaseAppInstance = admin.initializeApp({
+            credential: admin.credential.cert({
+                projectId,
+                clientEmail,
+                privateKey,
+            }),
+        });
+        console.log("✅ Firebase Admin Initialized Successfully!");
+        return firebaseAppInstance;
+    } catch (initError: any) {
+        console.error("🚨 CRITICAL: Firebase admin.initializeApp() failed during cold start:", initError);
+        throw new Error(`Firebase initialization failed: ${initError.message}`);
     }
 }
 
 // A safe getter for the messaging service that uses the initialized app.
 const getSafeMessaging = (): Messaging => {
-    // This function now either returns a valid Messaging service or throws.
-    if (!firebaseAppInstance) {
-        // On the first call, initialize and cache the instance.
-        firebaseAppInstance = initializeFirebaseApp();
-    }
-    return getMessaging(firebaseAppInstance);
+    // initializeFirebaseApp() is idempotent (it only runs once) and handles all caching
+    // and initialization logic. We can call it directly to get the app instance.
+    const app = initializeFirebaseApp();
+    return getMessaging(app);
 };
 
 export const sendFirebaseTopicNotification = async (topic: string, title: string, body: string) => {
