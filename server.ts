@@ -1,3 +1,5 @@
+
+
 import express from 'express';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
@@ -5,61 +7,6 @@ import { Pool } from 'pg';
 import { getCache, setCache, hasRedis } from './redisCache.js';
 
 dotenv.config();
-
-// --- INITIALIZE FIREBASE ADMIN (SINGLETON, SERVERLESS-SAFE) ---
-import * as admin from 'firebase-admin';
-import { getMessaging, Messaging } from 'firebase-admin/messaging';
-
-// A module-level singleton to hold the initialized Firebase app.
-let firebaseAppInstance: admin.app.App | null = null;
-
-function initializeFirebaseApp(): admin.app.App | null {
-  // On warm Vercel invocations, this singleton will be populated.
-  if (firebaseAppInstance) {
-    return firebaseAppInstance;
-  }
-
-  try {
-    const projectId = process.env.project_id || '';
-    const clientEmail = process.env.client_email || '';
-    const privateKey = (process.env.private_key || '').replace(/\\n/g, '\n');
-
-    if (projectId && clientEmail && privateKey) {
-      // This will throw 'app/duplicate-app' on a warm start if the container still has the app.
-      firebaseAppInstance = admin.initializeApp({
-        credential: admin.credential.cert({
-          projectId,
-          clientEmail,
-          privateKey,
-        }),
-      });
-      console.log("🔥 Firebase Admin Initialized (Cold Start)");
-      return firebaseAppInstance;
-    } else {
-      console.error("🚨 CRITICAL ERROR: Firebase Environment Variables are missing or empty in Vercel!");
-      console.log(`Debug -> projectId: ${!!projectId}, clientEmail: ${!!clientEmail}, privateKey: ${!!privateKey}`);
-      return null;
-    }
-  } catch (error: any) {
-    // This is the expected path for a warm start.
-    if (error.code === 'app/duplicate-app') {
-      console.log("🔥 Firebase Admin already exists (Warm Start)");
-      firebaseAppInstance = admin.app(); // Get the existing default app
-      return firebaseAppInstance;
-    }
-    console.error("🚨 CRITICAL: Firebase Admin Initialization Failed:", error);
-    return null;
-  }
-}
-
-// Initialize the app. This will be cached across invocations in a warm serverless function.
-const firebaseApp = initializeFirebaseApp(); // This populates the singleton
-
-// A safe getter for the messaging service that uses the initialized app.
-const getSafeMessaging = (): Messaging | null => {
-  return firebaseApp ? getMessaging(firebaseApp) : null;
-};
-// ----------------------------------------------
 
 const app = express();
 app.use(express.json());
@@ -526,44 +473,6 @@ app.post('/api/predict', async (req, res) => {
   }
 });
 
-// --- PUSH NOTIFICATION LOGIC ---
-const sendFirebaseTopicNotification = async (topic: string, title: string, body: string) => {
-  const message = {
-    notification: {
-      title: title,
-      body: body
-    },
-    topic: topic,
-    android: {
-      priority: 'high' as const,
-      notification: {
-        sound: 'default',
-        channelId: 'default',
-      },
-    },
-    apns: {
-      payload: {
-        aps: {
-          sound: 'default',
-        },
-      },
-    },
-  };
-
-  try {
-    // Use the safe getter to ensure Firebase is initialized.
-    const messaging = getSafeMessaging();
-    if (!messaging) {
-      console.error("Aborting notification send: Firebase Messaging is not available.");
-      return;
-    }
-    const response = await messaging.send(message);
-    console.log(`Successfully sent message to topic ${topic}:`, response);
-  } catch (error) {
-    console.error(`Error sending message to topic ${topic}:`, error);
-  }
-};
-
 let previousScoresCache: { [matchId: string]: string } = {};
 
 const checkGoalsAndNotify = async (liveMatches: any[]) => {
@@ -590,27 +499,14 @@ const checkGoalsAndNotify = async (liveMatches: any[]) => {
 
         const fullMessage = `${match.homeTeam.name} ${match.homeScore} - ${match.awayScore} ${match.awayTeam.name}`;
 
-        sendFirebaseTopicNotification('global_goal_alerts', goalMessage, fullMessage);
+        // TODO: This logic should be moved to the new `liveRoutes.ts` and use the new notification utility.
+        console.log(`Goal notification suppressed in deprecated server.ts: ${goalMessage} - ${fullMessage}`);
       }
 
       previousScoresCache[matchId] = currentScoreHash;
     }
   });
 };
-
-// --- SECRET TEST ROUTE ---
-app.get('/api/test-noti', async (req, res) => {
-  try {
-    await sendFirebaseTopicNotification(
-      'global_goal_alerts',
-      '🚀 VERCEL TEST!',
-      'This is a High-Priority notification from your backend!'
-    );
-    res.status(200).send('<h1>Notification Fired! Check your emulator!</h1>');
-  } catch (error) {
-    res.status(500).send('Error firing notification');
-  }
-});
 
 // --- SEO AND STATIC ROUTES ---
 app.get('/robots.txt', (_req, res) => {

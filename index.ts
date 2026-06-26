@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { Pool } from 'pg';
 import { getCache, setCache, hasRedis } from './redisCache.js';
 import { setupMatchRoutes } from './src/routes/matchRoutes.js';
+import { sendFirebaseTopicNotification } from './src/utils/firebaseAdmin.js';
 import { setupAdminRoutes } from './src/routes/adminRoutes.js';
 import { setupLiveRoutes } from './src/routes/liveRoutes.js';
 
@@ -99,6 +100,21 @@ async function fetchAndSaveHighlight(matchId: string, homeTeamName: string, away
 setupMatchRoutes(app, pool, fetchAndSaveHighlight);
 setupAdminRoutes(app);
 setupLiveRoutes(app, pool);
+
+// ============= TEST & DEBUG ROUTES =============
+// This route was in the old server.ts file. It's added here to align with the new structure.
+app.get('/api/test-noti', async (_req, res) => {
+    try {
+        await sendFirebaseTopicNotification(
+            'global_goal_alerts',
+            '🚀 VERCEL TEST (New Structure)!',
+            'This is a High-Priority notification from your new API structure!'
+        );
+        res.status(200).send('<h1>Notification Fired from index.ts! Check your device.</h1>');
+    } catch (error) {
+        res.status(500).send('Error firing notification');
+    }
+});
 
 // ============= SEO & SITEMAP ROUTES =============
 function seoPage(title: string, description: string, keywords: string, bodyContent: string, canonical: string): string {
