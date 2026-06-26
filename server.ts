@@ -10,41 +10,50 @@ dotenv.config();
 import * as admin from 'firebase-admin';
 import { getMessaging, Messaging } from 'firebase-admin/messaging';
 
+// A module-level singleton to hold the initialized Firebase app.
+let firebaseAppInstance: admin.app.App | null = null;
+
 function initializeFirebaseApp(): admin.app.App | null {
-  // If an app is already initialized, return it. This is for warm serverless function invocations.
-  if (admin.apps.length > 0) {
-    return admin.apps[0]!;
+  // On warm Vercel invocations, this singleton will be populated.
+  if (firebaseAppInstance) {
+    return firebaseAppInstance;
   }
 
-  // Otherwise, create a new app. This is for cold starts.
   try {
     const projectId = process.env.project_id || '';
     const clientEmail = process.env.client_email || '';
     const privateKey = (process.env.private_key || '').replace(/\\n/g, '\n');
 
     if (projectId && clientEmail && privateKey) {
-      const app = admin.initializeApp({
+      // This will throw 'app/duplicate-app' on a warm start if the container still has the app.
+      firebaseAppInstance = admin.initializeApp({
         credential: admin.credential.cert({
           projectId,
           clientEmail,
           privateKey,
         }),
       });
-      console.log("🔥 Firebase Admin Initialized Successfully! (Serverless-Safe)");
-      return app;
+      console.log("🔥 Firebase Admin Initialized (Cold Start)");
+      return firebaseAppInstance;
     } else {
       console.error("🚨 CRITICAL ERROR: Firebase Environment Variables are missing or empty in Vercel!");
       console.log(`Debug -> projectId: ${!!projectId}, clientEmail: ${!!clientEmail}, privateKey: ${!!privateKey}`);
       return null;
     }
-  } catch (error) {
+  } catch (error: any) {
+    // This is the expected path for a warm start.
+    if (error.code === 'app/duplicate-app') {
+      console.log("🔥 Firebase Admin already exists (Warm Start)");
+      firebaseAppInstance = admin.app(); // Get the existing default app
+      return firebaseAppInstance;
+    }
     console.error("🚨 CRITICAL: Firebase Admin Initialization Failed:", error);
     return null;
   }
 }
 
 // Initialize the app. This will be cached across invocations in a warm serverless function.
-const firebaseApp = initializeFirebaseApp();
+const firebaseApp = initializeFirebaseApp(); // This populates the singleton
 
 // A safe getter for the messaging service that uses the initialized app.
 const getSafeMessaging = (): Messaging | null => {
