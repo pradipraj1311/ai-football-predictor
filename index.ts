@@ -27,15 +27,15 @@ try {
         }),
       });
       isFirebaseInitialized = true;
-      console.log("🔥 Firebase Admin Initialized Successfully! (Modular Mode)");
+      console.log("Firebase Admin Initialized Successfully! (Modular Mode)");
     } else {
-      console.error("🚨 CRITICAL ERROR: Firebase Environment Variables are missing.");
+      console.error("CRITICAL ERROR: Firebase Environment Variables are missing.");
     }
   } else {
-    isFirebaseInitialized = true;
+    isFirebaseInitialized = true; // Already initialized (Warm start)
   }
 } catch (error) {
-  console.error("🚨 CRITICAL: Firebase Admin Initialization Failed:", error);
+  console.error("CRITICAL: Firebase Admin Initialization Failed:", error);
 }
 // ----------------------------------------------
 
@@ -338,6 +338,9 @@ app.get('/api/live-matches', checkMaintenance, async (_req, res) => {
     h2h: { matchesPlayed: 1, homeWins: 1, awayWins: 0, draws: 0, lastResults: ['W'] }
   }];
 
+  // Trigger goal checking and notifications 
+  checkGoalsAndNotify(minorLeagueFallback);
+
   // --- TEMP DISABLE RAPIDAPI ---
   return res.status(200).set(corsHeaders).json({ matches: minorLeagueFallback, cached: false, warning: true });
   // -----------------------------
@@ -581,7 +584,7 @@ const checkGoalsAndNotify = async (liveMatches: any[]) => {
 
         const fullMessage = `${match.homeTeam.name} ${match.homeScore} - ${match.awayScore} ${match.awayTeam.name}`;
 
-        // 🔴 Trigger the actual notification 🔴
+        // Trigger the actual notification
         sendFirebaseTopicNotification('global_goal_alerts', goalMessage, fullMessage);
       }
 

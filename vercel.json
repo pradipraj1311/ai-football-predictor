@@ -2,15 +2,15 @@
   "version": 2,
   "builds": [
     {
-      "src": "index.ts",
-      "use": "@vercel/node"
-    },
-    {
       "src": "package.json",
       "use": "@vercel/static-build",
       "config": {
         "distDir": "dist"
       }
+    },
+    {
+      "src": "index.ts",
+      "use": "@vercel/node"
     }
   ],
   "routes": [
@@ -19,11 +19,11 @@
       "dest": "/index.ts"
     },
     {
-      "src": "/sitemap.xml",
+      "src": "/robots.txt",
       "dest": "/index.ts"
     },
     {
-      "src": "/robots.txt",
+      "src": "/sitemap.xml",
       "dest": "/index.ts"
     },
     {
@@ -43,12 +43,8 @@
       "dest": "/index.ts"
     },
     {
-      "src": "/predictions/(.*)",
-      "dest": "/index.ts"
-    },
-    {
       "src": "/(.*)",
-      "dest": "/index.html"
+      "dest": "/$1"
     }
   ]
 }
