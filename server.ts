@@ -1,12 +1,43 @@
-
-
 import express from 'express';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import { Pool } from 'pg';
 import { getCache, setCache, hasRedis } from './redisCache.js';
 
+// 🔴 100% CORRECT FIREBASE MODULAR IMPORTS 🔴
+import { initializeApp, getApps, cert } from 'firebase-admin/app';
+import { getMessaging } from 'firebase-admin/messaging';
+
 dotenv.config();
+
+// --- INITIALIZE FIREBASE ADMIN (MODULAR MODE) ---
+let isFirebaseInitialized = false;
+try {
+  if (getApps().length === 0) {
+    const projectId = process.env.project_id || '';
+    const clientEmail = process.env.client_email || '';
+    const privateKey = (process.env.private_key || '').replace(/\\n/g, '\n');
+
+    if (projectId && clientEmail && privateKey) {
+      initializeApp({
+        credential: cert({
+          projectId,
+          clientEmail,
+          privateKey,
+        }),
+      });
+      isFirebaseInitialized = true;
+      console.log("🔥 Firebase Admin Initialized Successfully! (Modular Mode)");
+    } else {
+      console.error("🚨 CRITICAL ERROR: Firebase Environment Variables are missing.");
+    }
+  } else {
+    isFirebaseInitialized = true; // Already initialized (Warm start)
+  }
+} catch (error) {
+  console.error("🚨 CRITICAL: Firebase Admin Initialization Failed:", error);
+}
+// ----------------------------------------------
 
 const app = express();
 app.use(express.json());
@@ -295,6 +326,7 @@ app.get('/api/live-matches', async (_req, res) => {
     h2h: { matchesPlayed: 1, homeWins: 1, awayWins: 0, draws: 0, lastResults: ['W'] }
   }];
 
+  // 🔴 Trigger goal checking and notifications 🔴
   checkGoalsAndNotify(minorLeagueFallback);
   return res.status(200).set(corsHeaders).json({ matches: minorLeagueFallback, cached: false, warning: true });
 });
@@ -473,6 +505,43 @@ app.post('/api/predict', async (req, res) => {
   }
 });
 
+// --- PUSH NOTIFICATION LOGIC ---
+const sendFirebaseTopicNotification = async (topic: string, title: string, body: string) => {
+  if (!isFirebaseInitialized) {
+    console.error("Firebase is not initialized. Notification skipped.");
+    return;
+  }
+  
+  const message = {
+    notification: {
+      title: title,
+      body: body
+    },
+    topic: topic,
+    android: {
+      priority: 'high' as const,
+      notification: {
+        sound: 'default',
+        channelId: 'default',
+      },
+    },
+    apns: {
+      payload: {
+        aps: {
+          sound: 'default',
+        },
+      },
+    },
+  };
+
+  try {
+    const response = await getMessaging().send(message);
+    console.log(`Successfully sent message to topic ${topic}:`, response);
+  } catch (error) {
+    console.error(`Error sending message to topic ${topic}:`, error);
+  }
+};
+
 let previousScoresCache: { [matchId: string]: string } = {};
 
 const checkGoalsAndNotify = async (liveMatches: any[]) => {
@@ -499,14 +568,28 @@ const checkGoalsAndNotify = async (liveMatches: any[]) => {
 
         const fullMessage = `${match.homeTeam.name} ${match.homeScore} - ${match.awayScore} ${match.awayTeam.name}`;
 
-        // TODO: This logic should be moved to the new `liveRoutes.ts` and use the new notification utility.
-        console.log(`Goal notification suppressed in deprecated server.ts: ${goalMessage} - ${fullMessage}`);
+        // 🔴 Trigger the actual notification 🔴
+        sendFirebaseTopicNotification('global_goal_alerts', goalMessage, fullMessage);
       }
 
       previousScoresCache[matchId] = currentScoreHash;
     }
   });
 };
+
+// --- SECRET TEST ROUTE ---
+app.get('/api/test-noti', async (req, res) => {
+  try {
+    await sendFirebaseTopicNotification(
+      'global_goal_alerts',
+      '🚀 VERCEL TEST!',
+      'This is a High-Priority notification from your backend!'
+    );
+    res.status(200).send('<h1>Notification Fired! Check your emulator!</h1>');
+  } catch (error) {
+    res.status(500).send('Error firing notification');
+  }
+});
 
 // --- SEO AND STATIC ROUTES ---
 app.get('/robots.txt', (_req, res) => {
