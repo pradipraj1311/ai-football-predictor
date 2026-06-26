@@ -6,16 +6,15 @@ import { getCache, setCache, hasRedis } from './redisCache.js';
 
 dotenv.config();
 
-// --- INITIALIZE FIREBASE ADMIN (SAFE MODE) ---
+// --- INITIALIZE FIREBASE ADMIN (SAFE AND MODULAR MODE) ---
 import * as admin from 'firebase-admin';
+import { getMessaging } from 'firebase-admin/messaging';
 
 try {
   // Check if admin is imported and apps array exists before checking length
   if (admin && admin.apps && admin.apps.length === 0) {
-
     // Check if the environment variables actually exist to prevent crashes
     if (process.env.project_id && process.env.client_email && process.env.private_key) {
-
       const privateKey = process.env.private_key.replace(/\\n/g, '\n');
 
       admin.initializeApp({
@@ -66,7 +65,7 @@ const checkMaintenance = async (_req: express.Request, res: express.Response, ne
 };
 
 app.use('/api', (req, res, next) => {
-  if (req.path.startsWith('/login') || req.path.startsWith('/maintenance')) {
+  if (req.path.startsWith('/login') || req.path.startsWith('/maintenance') || req.path.startsWith('/test-noti')) {
     return next();
   }
   checkMaintenance(req, res, next);
@@ -156,15 +155,6 @@ async function fetchAndSaveHighlight(matchId: string, homeTeamName: string, away
 
 let matchCache: { data: any; timestamp: number } | null = null;
 const CACHE_DURATION = 5 * 60 * 1000;
-let inFlightLiveFetch: Promise<any> | null = null;
-let lastSofaFetchAllowed = 0;
-const SOFA_BACKOFF_BASE = 30 * 1000;
-const SOFA_FETCH_TIMEOUT = 5 * 1000;
-let sofa429Count = 0;
-let currentSofaKeyIndex = 0;
-const SOFA_MAX_BACKOFF = 10 * 60 * 1000;
-const SOFA_BACKOFF_JITTER = 0.25;
-const SOFA_MIN_INTERVAL = 60 * 1000;
 
 const teamNameAliases: { [key: string]: string } = {
   'dr congo': 'congo dr',
@@ -278,7 +268,6 @@ app.get('/api/live-matches', async (_req, res) => {
   const LIVE_CACHE_DURATION = 60 * 1000;
   const STALE_WHILE_REVALIDATE_WINDOW = 5 * 60 * 1000;
   const redisKey = 'live-matches:v1';
-  const backoffKey = 'live-matches:backoff-until';
 
   let responseSent = false;
 
@@ -339,7 +328,6 @@ app.get('/api/live-matches', async (_req, res) => {
 app.get('/api/standings', async (req, res) => {
   const corsHeaders = { 'Access-Control-Allow-Origin': '*' };
 
-  // Default to World Cup 2026 (Tournament: 16, Season: 52186) if no query params provided
   const tournamentId = req.query.tournamentId || '16';
   const seasonId = req.query.seasonId || '52186';
 
@@ -390,13 +378,12 @@ app.get('/api/standings', async (req, res) => {
             ga: row.scoresAgainst || 0,
             gd: (row.scoresFor || 0) - (row.scoresAgainst || 0),
             points: row.points || 0,
-            group: groupName // Keeps track of which group the team belongs to
+            group: groupName
           });
         });
       });
     }
 
-    // 4. Cache Logic: Cache for 12 hours (43200 seconds) to heavily preserve RapidAPI quota
     if (formattedStandings.length > 0) {
       await setCache(cacheKey, { data: formattedStandings }, 43200);
     }
@@ -404,11 +391,9 @@ app.get('/api/standings', async (req, res) => {
     res.status(200).set(corsHeaders).json({ standings: formattedStandings, cached: false });
   } catch (error: any) {
     console.error("Standings Fetch Error:", error.message);
-    // Return empty array instead of 500 so UI doesn't break
     res.status(200).set(corsHeaders).json({ standings: [], error: error.message });
   }
 });
-// ------------------------------------------------------------
 
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
@@ -514,7 +499,7 @@ app.post('/api/predict', async (req, res) => {
   }
 });
 
-// 1. Function to send a notification to a Firebase 'Topic' (HIGH PRIORITY)
+// --- PUSH NOTIFICATION LOGIC ---
 const sendFirebaseTopicNotification = async (topic: string, title: string, body: string) => {
   const message = {
     notification: {
@@ -522,7 +507,6 @@ const sendFirebaseTopicNotification = async (topic: string, title: string, body:
       body: body
     },
     topic: topic,
-    // 🔴 Special High Priority setting for Android 🔴
     android: {
       priority: 'high' as const,
       notification: {
@@ -530,7 +514,6 @@ const sendFirebaseTopicNotification = async (topic: string, title: string, body:
         channelId: 'default',
       },
     },
-    // For iOS
     apns: {
       payload: {
         aps: {
@@ -541,7 +524,7 @@ const sendFirebaseTopicNotification = async (topic: string, title: string, body:
   };
 
   try {
-    const response = await admin.messaging().send(message);
+    const response = await getMessaging().send(message);
     console.log(`Successfully sent message to topic ${topic}:`, response);
   } catch (error) {
     console.error(`Error sending message to topic ${topic}:`, error);
@@ -596,6 +579,7 @@ app.get('/api/test-noti', async (req, res) => {
   }
 });
 
+// --- SEO AND STATIC ROUTES ---
 app.get('/robots.txt', (_req, res) => {
   try {
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
@@ -681,8 +665,8 @@ app.get('/sitemap.xml', (_req, res) => {
       '/ai-football-predictions',
       '/fantasy-football-ai',
       '/live-football-scores',
-      '/privacy-policy', // Assuming this page exists or will exist
-      '/terms-of-service', // Assuming this page exists or will exist
+      '/privacy-policy', 
+      '/terms-of-service', 
     ];
 
     const urlset = urls.map(url =>
