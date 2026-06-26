@@ -3,6 +3,8 @@ import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import { Pool } from 'pg';
 import { getCache, setCache, hasRedis } from './redisCache.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 //  CORRECT FIREBASE MODULAR IMPORTS
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
@@ -692,6 +694,20 @@ app.get('/sitemap.xml', (_req, res) => {
     console.error("Sitemap Generation Error:", error);
     res.status(500).setHeader('Content-Type', 'text/plain').send("Error generating sitemap.");
   }
+});
+
+// --- SERVE THE REACT/VITE FRONTEND ---
+
+// Set __dirname for use in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Serve the 'dist' folder built for production
+app.use(express.static(path.join(__dirname, 'dist')));
+
+// For any unknown route, serve the main index.html (for client-side routing)
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist/index.html'));
 });
 
 if (process.env.NODE_ENV !== 'production') {
