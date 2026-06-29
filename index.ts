@@ -664,13 +664,12 @@ app.options('/api/predict', (req, res) => {
 });
 
 // ✅ GOOGLE GEMINI AI ACTIVATED
-app.post('/api/predict', checkMaintenance, async (req, res) => { // ✅ GOOGLE GEMINI AI ACTIVATED (NEW SDK FIX)
+app.post('/api/predict', checkMaintenance, async (req, res) => {
   const corsHeaders = { 
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type'
   };
-
   try {
     const { match } = req.body;
     if (!match || !match.id) return res.status(400).set(corsHeaders).json({ error: "Invalid match payload." });
@@ -686,12 +685,7 @@ app.post('/api/predict', checkMaintenance, async (req, res) => { // ✅ GOOGLE G
     const homeTeam = typeof match.homeTeam === 'object' ? match.homeTeam.name : match.homeTeam;
     const awayTeam = typeof match.awayTeam === 'object' ? match.awayTeam.name : match.awayTeam;
 
-    const geminiClients = getGeminiClients();
-    let lastError = null;
-
-    for (const aiClient of geminiClients) {
-      try {
-        const prompt = `Analyze the football match between ${homeTeam} and ${awayTeam}. Current Status: ${match.status || 'Upcoming'}, Current Score: ${homeTeam} ${match.homeScore ?? 0} - ${match.awayScore ?? 0} ${awayTeam}.
+    const prompt = `Analyze the football match between ${homeTeam} and ${awayTeam}. Current Status: ${match.status || 'Upcoming'}, Current Score: ${homeTeam} ${match.homeScore ?? 0} - ${awayTeam} ${match.awayScore ?? 0}.
 Return ONLY valid JSON (no markdown):
 {
   "analysis": "3-4 sentence tactical analysis.",
@@ -702,32 +696,36 @@ Return ONLY valid JSON (no markdown):
   "advisor": { "captain": "Player", "viceCaptain": "Player", "bestXI": [ { "name": "Player 1", "team": "${homeTeam}", "rating": "8.5", "reason": "Good form." } ] }
 }`;
 
-        // 🔴 આ લાઈન ખાસ ચેક કરો! જૂની 'getGenerativeModel' નથી વાપરવાની! 🔴
-        const response = await aiClient.models.generateContent({
-          model: "gemini-1.5-flash",
-          contents: prompt,
-          config: { temperature: 0.7, responseMimeType: "application/json" }
-        });
+    // રોટેશન લિસ્ટ: જે મોડેલ તમારા લિસ્ટમાં એક્ટિવ છે તે જ અહીં વાપરવા
+    const modelsToTry = ["gemini-2.5-flash", "gemini-3.1-flash-lite"];
+    const geminiClients = getGeminiClients();
+    let lastError: any = null;
 
-        let cleanedJsonStr = (response.text || "").trim();
-        if (cleanedJsonStr.startsWith('```json')) cleanedJsonStr = cleanedJsonStr.replace(/^```json\n/, '').replace(/\n```$/, '');
-        else if (cleanedJsonStr.startsWith('```')) cleanedJsonStr = cleanedJsonStr.replace(/^```\n/, '').replace(/\n```$/, '');
+    // કી અને મોડેલ બંને રોટેટ કરો
+    for (const aiClient of geminiClients) {
+      for (const modelName of modelsToTry) {
+        try {
+          const response = await aiClient.models.generateContent({
+            model: modelName,
+            contents: prompt,
+            config: { temperature: 0.7, responseMimeType: "application/json" }
+          });
 
-        const predictionData = JSON.parse(cleanedJsonStr);
-        predictionCache[matchId] = {
-          data: predictionData,
-          timestamp: now,
-          scoreHash: currentScoreHash
-        };
+          let cleanedJsonStr = (response.text || "").trim();
+          if (cleanedJsonStr.startsWith('```json')) cleanedJsonStr = cleanedJsonStr.replace(/^```json\n/, '').replace(/\n```$/, '');
+          else if (cleanedJsonStr.startsWith('```')) cleanedJsonStr = cleanedJsonStr.replace(/^```\n/, '').replace(/\n```$/, '');
 
-        return res.status(200).set(corsHeaders).json({ prediction: predictionData, cached: false });
-      } catch (error: any) {
-        console.error(`Gemini Error:`, error.message);
-        lastError = error;
+          const predictionData = JSON.parse(cleanedJsonStr);
+          predictionCache[matchId] = { data: predictionData, timestamp: now, scoreHash: currentScoreHash };
+
+          return res.status(200).set(corsHeaders).json({ prediction: predictionData, cached: false });
+        } catch (e: any) {
+          console.warn(`Gemini API call failed with model ${modelName}. Trying next... Error: ${e.message}`);
+          lastError = e;
+        }
       }
     }
-
-    throw lastError || new Error("All Gemini API keys failed.");
+    throw lastError || new Error("All Gemini API keys and models failed.");
 
   } catch (error: any) {
     console.error('Gemini Analysis Interrupted', error.message);
