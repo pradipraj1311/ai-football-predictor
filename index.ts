@@ -206,6 +206,62 @@ function normalizeTeamName(name: string): string {
   return normalized.replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
 }
 
+function transformMatchRow(row: any, status: 'UPCOMING' | 'FINISHED' | 'SCHEDULED'): any {
+    const homeTeamName = typeof row.home_team === 'string' ? row.home_team : row.home_team?.name || 'Home';
+    const awayTeamName = typeof row.away_team === 'string' ? row.away_team : row.away_team?.name || 'Away';
+
+    let displayTime = row.match_time;
+    if (typeof displayTime === 'string' && displayTime.match(/^\d{2}:\d{2}(:\d{2})?$/)) {
+        displayTime = displayTime.substring(0, 5);
+    }
+
+    let homeForm: string[] = [];
+    try {
+        homeForm = row.home_team_form ? JSON.parse(row.home_team_form) : ['W', 'D', 'W', 'L', 'W'];
+    } catch (e) {
+        homeForm = ['W', 'D', 'W', 'L', 'W'];
+    }
+
+    let awayForm: string[] = [];
+    try {
+        awayForm = row.away_team_form ? JSON.parse(row.away_team_form) : ['D', 'W', 'L', 'W', 'D'];
+    } catch (e) {
+        awayForm = ['D', 'W', 'L', 'W', 'D'];
+    }
+
+    return {
+        id: row.id,
+        competition: row.competition || 'FIFA World Cup 2026',
+        status: status,
+        dbStatus: row.db_status || status,
+        time: status === 'FINISHED' ? 'FT' : (displayTime || 'TBD'),
+        date: new Date(row.match_date).toISOString().split('T')[0],
+        youtubeHighlightId: row.youtube_highlight_id || null,
+        homeTeam: {
+            id: row.home_team_id || homeTeamName.toLowerCase().replace(/\s/g, '-'),
+            name: homeTeamName,
+            code: row.home_team_code || homeTeamName.substring(0, 3).toUpperCase(),
+            logo: row.home_team_logo || '⚽',
+            form: homeForm
+        },
+        awayTeam: {
+            id: row.away_team_id || awayTeamName.toLowerCase().replace(/\s/g, '-'),
+            name: awayTeamName,
+            code: row.away_team_code || awayTeamName.substring(0, 3).toUpperCase(),
+            logo: row.away_team_logo || '⚽',
+            form: awayForm
+        },
+        homeScore: row.home_score ?? 0,
+        awayScore: row.away_score ?? 0,
+        stats: {
+            possession: { home: 50, away: 50 }, shots: { home: 10, away: 8 }, shotsOnTarget: { home: 4, away: 3 },
+            fouls: { home: 10, away: 12 }, yellowCards: { home: 1, away: 2 }, redCards: { home: 0, away: 0 }, corners: { home: 5, away: 4 }
+        },
+        events: [],
+        h2h: { matchesPlayed: 5, homeWins: 2, awayWins: 1, draws: 2, lastResults: ['W', 'D', 'L', 'W', 'D'] }
+    };
+}
+
 app.use('/api', (req, res, next) => {
   if (req.path.startsWith('/login') || req.path.startsWith('/maintenance') || req.path.startsWith('/test-noti')) {
     return next();
@@ -602,6 +658,80 @@ app.get('/api/standings', async (req, res) => {
     console.error("Standings Fetch Error:", error.message);
     res.status(200).set(corsHeaders).json({ standings: [], error: error.message });
   }
+});
+
+app.get('/api/upcoming-matches', checkMaintenance, async (_req, res) => {
+    const corsHeaders = {
+        'Access-Control-Allow-Origin': '*',
+        'Content-Type': 'application/json',
+        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600'
+    };
+    if (!process.env.DB_URL) {
+        return res.status(200).set(corsHeaders).json({ matches: [], warning: 'DB not configured' });
+    }
+    try {
+        const client = await pool.connect();
+        const result = await client.query(
+            `SELECT * FROM world_cup_matches 
+                 WHERE match_date >= NOW() 
+                 ORDER BY match_date ASC 
+                 LIMIT 20`
+        );
+        client.release();
+
+        const matches = result.rows.map(row => transformMatchRow(row, 'UPCOMING'));
+        res.status(200).set(corsHeaders).json({
+            matches,
+            count: result.rows.length
+        });
+    } catch (error: any) {
+        console.error('Upcoming matches error:', error.message);
+        res.status(200).set(corsHeaders).json({
+            matches: [],
+            warning: 'Could not fetch upcoming matches'
+        });
+    }
+});
+
+app.get('/api/completed-matches', checkMaintenance, async (_req, res) => {
+    const corsHeaders = {
+        'Access-Control-Allow-Origin': '*',
+        'Content-Type': 'application/json',
+        'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=3600'
+    };
+    if (!process.env.DB_URL) {
+        return res.status(200).set(corsHeaders).json({ matches: [], warning: 'DB not configured' });
+    }
+    try {
+        const client = await pool.connect();
+        const result = await client.query(
+            `SELECT * FROM world_cup_matches 
+                 WHERE db_status = 'FINISHED' 
+                 ORDER BY match_date DESC 
+                 LIMIT 20`
+        );
+        client.release();
+
+        const matches = await Promise.all(result.rows.map(async (row) => {
+            const transformed = transformMatchRow(row, 'FINISHED');
+            if (!transformed.youtubeHighlightId && process.env.YOUTUBE_API_KEY) {
+                const ytId = await fetchAndSaveHighlight(row.id, transformed.homeTeam.name, transformed.awayTeam.name);
+                if (ytId) transformed.youtubeHighlightId = ytId;
+            }
+            return transformed;
+        }));
+
+        res.status(200).set(corsHeaders).json({
+            matches,
+            count: result.rows.length
+        });
+    } catch (error: any) {
+        console.error('Completed matches error:', error.message);
+        res.status(200).set(corsHeaders).json({
+            matches: [],
+            warning: 'Could not fetch completed matches'
+        });
+    }
 });
 
 app.post('/api/login', (req, res) => {
