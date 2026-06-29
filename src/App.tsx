@@ -45,7 +45,7 @@ function App() {
   const [matches, setMatches] = useState<Match[]>([]);
   // Start with an empty array for teams, we will fetch it from the backend
   const [teams, setTeams] = useState<FootballTeamProfile[]>([]);
-  
+
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   const [dynamicStandings, setDynamicStandings] = useState<Record<string, any>>({ 'FIFA World Cup 2026': WORLD_CUP_STANDINGS });
   const [selectedTournament, setSelectedTournament] = useState<string>('FIFA World Cup 2026');
@@ -78,7 +78,7 @@ function App() {
     } catch (e) { }
     return [];
   };
-  
+
   const finishedMatchesRef = useRef<Match[]>(initialFinishedMatches());
 
   // Fetch teams from backend API when component mounts
@@ -104,14 +104,14 @@ function App() {
   useEffect(() => {
     if (!matches.length) return;
     const selectedCurrent = selectedMatch && matches.find((m) => m.id === selectedMatch.id);
-    const selectedIsFinished = selectedCurrent && ['FINISHED', 'FT', 'ENDED', 'CLOSED'].includes(selectedCurrent.status);
 
     if (activeAnalysisTab === 'TELEMETRY' && selectedCurrent && selectedCurrent.status !== 'LIVE') {
       setActiveAnalysisTab('H2H');
     }
-    if (selectedIsFinished && activeTab !== 'FINISHED') {
-      setActiveTab('FINISHED');
-    }
+    // const selectedIsFinished = selectedCurrent && ['FINISHED', 'FT', 'ENDED', 'CLOSED'].includes(selectedCurrent.status);
+    // if (selectedIsFinished && activeTab !== 'FINISHED') {
+    //   setActiveTab('FINISHED');
+    // }
   }, [matches, selectedMatch, activeTab, activeAnalysisTab]);
 
   useEffect(() => {
@@ -207,9 +207,9 @@ function App() {
       // Prevent fetching data entirely if maintenance is ON and user is not admin
       const maintenanceModeActive = localStorage.getItem('maintenance_mode') === 'true';
       const isUserAdmin = sessionStorage.getItem('is_admin_auth') === 'true';
-      
+
       if (maintenanceModeActive && !isUserAdmin) {
-        return; 
+        return;
       }
 
       const now = Date.now();
@@ -219,7 +219,7 @@ function App() {
       if (allMatches.length > 0) {
         const hasLive = allMatches.some((m) => m.status === 'LIVE');
         if (hasLive) {
-          requiredCooldown = 60 * 1000; 
+          requiredCooldown = 60 * 1000;
         } else {
           const upcomingMatches = allMatches.filter((m) => m.status === 'UPCOMING');
           if (upcomingMatches.length > 0) {
@@ -244,25 +244,25 @@ function App() {
 
             if (minTimeUntilMatchMs !== Infinity) {
               if (minTimeUntilMatchMs > 3 * 60 * 60 * 1000) {
-                requiredCooldown = 60 * 60 * 1000; 
+                requiredCooldown = 60 * 60 * 1000;
               } else if (minTimeUntilMatchMs > 60 * 60 * 1000) {
-                requiredCooldown = 15 * 60 * 1000; 
+                requiredCooldown = 15 * 60 * 1000;
               } else if (minTimeUntilMatchMs > 15 * 60 * 1000) {
-                requiredCooldown = 5 * 60 * 1000; 
+                requiredCooldown = 5 * 60 * 1000;
               } else {
-                requiredCooldown = 2 * 60 * 1000; 
+                requiredCooldown = 2 * 60 * 1000;
               }
             } else {
-              requiredCooldown = 10 * 60 * 1000; 
+              requiredCooldown = 10 * 60 * 1000;
             }
           } else {
-            requiredCooldown = 60 * 60 * 1000; 
+            requiredCooldown = 60 * 60 * 1000;
           }
         }
       }
 
       if (now - lastFetchTimeRef.current < requiredCooldown) {
-        return; 
+        return;
       }
       lastFetchTimeRef.current = now;
 
@@ -312,15 +312,15 @@ function App() {
         const liveRes = await fetch(`/api/live-matches`);
         let liveMatches: any[] = [];
         let isLiveFetchSuccess = false;
-        
+
         if (liveRes.ok) {
           const liveData = await liveRes.json();
           liveMatches = liveData.matches || [];
           isLiveFetchSuccess = !liveData.warning;
 
           try {
-            const BACKOFF_CLIENT_EXTEND = 3 * 60 * 1000; 
-            const CACHED_EXTEND = 60 * 1000; 
+            const BACKOFF_CLIENT_EXTEND = 3 * 60 * 1000;
+            const CACHED_EXTEND = 60 * 1000;
             if (liveData.backoff) {
               lastFetchTimeRef.current = Date.now() + BACKOFF_CLIENT_EXTEND;
             } else if (liveData.cached) {
@@ -474,7 +474,7 @@ function App() {
               const t = group.entries.find((e: any) => {
                 const normalizedExistingName = normalizeTeamName(e.teamName);
                 return (normalizedExistingName === normalizedNameToFind) ||
-                       (e.code && code && e.code.toLowerCase() === code.toLowerCase() && comp !== 'FIFA World Cup 2026');
+                  (e.code && code && e.code.toLowerCase() === code.toLowerCase() && comp !== 'FIFA World Cup 2026');
               });
               if (t) foundTeam = t;
             });
@@ -483,7 +483,7 @@ function App() {
                 return null;
               }
               foundTeam = { rank: 0, teamName, code: code || 'UNK', logo: logo || '⚽', played: 0, win: 0, draw: 0, lose: 0, goalsFor: 0, goalsAgainst: 0, gd: 0, points: 0 };
-              newDynamicStandings[comp][0].entries.push(foundTeam); 
+              newDynamicStandings[comp][0].entries.push(foundTeam);
             }
             return foundTeam;
           };
@@ -599,7 +599,7 @@ function App() {
   };
 
   const filteredMatches = matches.filter((m) => {
-    if (!m) return false; 
+    if (!m) return false;
     const isFinishedStatus = ['FINISHED', 'FT', 'ENDED', 'CLOSED'].includes(String(m.status));
     if (activeTab === 'LIVE') return m.status === 'LIVE';
     if (activeTab === 'UPCOMING') return m.status === 'UPCOMING';
@@ -685,16 +685,16 @@ function App() {
         <main className="max-w-[1600px] mx-auto p-4 md:p-6 pb-24 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start relative min-h-screen">
           <div className="lg:col-span-4 xl:col-span-3 flex flex-col gap-4 sticky top-24">
             <div className="bg-[#0B1121] border border-white/5 p-1.5 rounded-xl grid grid-cols-6 gap-1 text-center">
-              <button onClick={() => { setActiveTab('LIVE'); setSelectedTeam(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'LIVE' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}><span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span> Live</button>
-              <button onClick={() => { setActiveTab('UPCOMING'); setSelectedTeam(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'UPCOMING' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><Calendar className="w-3 h-3" /> Upcoming</button>
-              <button onClick={() => { setActiveTab('FINISHED'); setSelectedTeam(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'FINISHED' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><History className="w-3 h-3" /> Results</button>
-              <button onClick={() => { setActiveTab('STANDINGS'); setSelectedTeam(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'STANDINGS' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><ListOrdered className="w-3 h-3" /> Table</button>
-              
-              <button onClick={() => { setActiveTab('TEAMS'); setSelectedTeam(teams[0] || null); }} className={`relative py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'TEAMS' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}>
+              <button onClick={() => { setActiveTab('LIVE'); setSelectedTeam(null); setSelectedMatch(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'LIVE' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}><span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span> Live</button>
+              <button onClick={() => { setActiveTab('UPCOMING'); setSelectedTeam(null); setSelectedMatch(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'UPCOMING' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><Calendar className="w-3 h-3" /> Upcoming</button>
+              <button onClick={() => { setActiveTab('FINISHED'); setSelectedTeam(null); setSelectedMatch(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'FINISHED' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><History className="w-3 h-3" /> Results</button>
+              <button onClick={() => { setActiveTab('STANDINGS'); setSelectedTeam(null); setSelectedMatch(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'STANDINGS' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><ListOrdered className="w-3 h-3" /> Table</button>
+
+              <button onClick={() => { setActiveTab('TEAMS'); setSelectedTeam(teams[0] || null); setSelectedMatch(null); }} className={`relative py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'TEAMS' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}>
                 <Shield className="w-3 h-3" /> Teams <span className="absolute top-0 right-1 text-[7px] font-bold bg-indigo-500 text-white px-1 rounded-full">NEW</span>
               </button>
 
-              <button onClick={() => { setActiveTab('POLL'); setSelectedTeam(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'POLL' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><Trophy className="w-3 h-3" /> Poll</button>
+              <button onClick={() => { setActiveTab('POLL'); setSelectedTeam(null); setSelectedMatch(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'POLL' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><Trophy className="w-3 h-3" /> Poll</button>
             </div>
 
             <div className="flex flex-col gap-2 max-h-[600px] overflow-y-auto pr-1">
@@ -1016,22 +1016,22 @@ function App() {
 
       {isAdmin && (
         <div className="fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-indigo-500/30 p-3 z-[120] flex items-center justify-center gap-6 text-xs shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
-            <div className="flex items-center gap-2 font-bold text-indigo-400">
-                <Shield className="w-4 h-4" />
-                <span>ADMIN MODE</span>
-            </div>
-            <div className="w-px h-6 bg-white/10"></div>
-            <div className="flex items-center gap-3">
-                <span className="text-slate-400 font-bold">Maintenance Mode:</span>
-                <button onClick={() => setMaintenanceMode(!isMaintenance)} className={`px-3 py-1 rounded-full font-bold uppercase tracking-wider border ${isMaintenance ? 'bg-red-500/20 text-red-300 border-red-500/30' : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'}`}>
-                    {isMaintenance ? 'ON' : 'OFF'}
-                </button>
-            </div>
-            <div className="w-px h-6 bg-white/10"></div>
-            <button onClick={handleLogout} className="flex items-center gap-2 text-slate-400 hover:text-white font-bold">
-                <LogOut className="w-4 h-4" />
-                <span>Logout</span>
+          <div className="flex items-center gap-2 font-bold text-indigo-400">
+            <Shield className="w-4 h-4" />
+            <span>ADMIN MODE</span>
+          </div>
+          <div className="w-px h-6 bg-white/10"></div>
+          <div className="flex items-center gap-3">
+            <span className="text-slate-400 font-bold">Maintenance Mode:</span>
+            <button onClick={() => setMaintenanceMode(!isMaintenance)} className={`px-3 py-1 rounded-full font-bold uppercase tracking-wider border ${isMaintenance ? 'bg-red-500/20 text-red-300 border-red-500/30' : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'}`}>
+              {isMaintenance ? 'ON' : 'OFF'}
             </button>
+          </div>
+          <div className="w-px h-6 bg-white/10"></div>
+          <button onClick={handleLogout} className="flex items-center gap-2 text-slate-400 hover:text-white font-bold">
+            <LogOut className="w-4 h-4" />
+            <span>Logout</span>
+          </button>
         </div>
       )}
     </div>

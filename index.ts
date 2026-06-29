@@ -697,15 +697,6 @@ app.post('/api/predict', checkMaintenance, async (req, res) => {
 
     for (const aiClient of geminiClients) {
       try {
-        const model = aiClient.getGenerativeModel({
-          model: "gemini-1.5-flash",
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 800,
-            responseMimeType: "application/json"
-          }
-        });
-
         const prompt = `Analyze the football match between ${homeTeam} and ${awayTeam}.
 Current Status: ${match.status || 'Upcoming'}
 Current Score: ${homeTeam} ${match.homeScore ?? 0} - ${match.awayScore ?? 0} ${awayTeam}
@@ -734,8 +725,17 @@ Return ONLY a valid JSON object with the following structure (no markdown, no ba
 }
 Make the probabilities sum to 100. Make the analysis sound professional and tactical.`;
 
-        const result = await model.generateContent(prompt);
-        const responseText = result.response.text().trim();
+        const model = aiClient.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const result = await model.generateContent({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 800,
+            responseMimeType: "application/json"
+          }
+        });
+
+        const responseText = result.response.text();
         
         let cleanedJsonStr = responseText;
         if (cleanedJsonStr.startsWith('```json')) {
@@ -744,7 +744,7 @@ Make the probabilities sum to 100. Make the analysis sound professional and tact
             cleanedJsonStr = cleanedJsonStr.replace(/^```\n/, '').replace(/\n```$/, '');
         }
 
-        const predictionData = JSON.parse(cleanedJsonStr);
+        const predictionData = JSON.parse(cleanedJsonStr.trim());
         
         predictionCache[matchId] = {
           data: predictionData,
