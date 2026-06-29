@@ -425,13 +425,13 @@ app.get('/api/live-matches', checkMaintenance, async (_req, res) => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), SOFA_FETCH_TIMEOUT);
 
-      const todayStr = new Date().toISOString().split('T')[0];
-      const url = `https://sofascore6.p.rapidapi.com/sport/football/events/date/${todayStr}`;
+      const url = `https://sofascore6.p.rapidapi.com/api/sofascore/v1/match/live?sport_slug=football`;
 
       const response = await fetch(url, {
         headers: {
-          'X-RapidAPI-Key': keys[currentSofaKeyIndex],
-          'X-RapidAPI-Host': 'sofascore6.p.rapidapi.com'
+          'x-rapidapi-key': keys[currentSofaKeyIndex],
+          'x-rapidapi-host': 'sofascore6.p.rapidapi.com',
+          'Content-Type': 'application/json'
         },
         signal: controller.signal
       });
