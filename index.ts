@@ -80,6 +80,7 @@ const checkAdminPassword = (req: express.Request, res: express.Response, next: e
   next();
 };
 
+// --- GEMINI CLIENT INITIALIZATION ---
 function getGeminiClients(): GoogleGenAI[] {
   const rawKeys = process.env.GEMINI_API_KEY;
   if (!rawKeys || rawKeys.trim() === "") {
@@ -245,78 +246,11 @@ const MANAGED_TEAMS = [
   { id: 'pan', name: 'Panama', code: 'PAN', logo: '🇵🇦', country: 'North America', founded: 1937, stadium: 'Estadio Rommel Fernández', form: ['W', 'L', 'L', 'W', 'L'] }
 ];
 
-// Endpoint to fetch the list of all teams
 app.get('/api/teams', (_req, res) => {
   const corsHeaders = { 'Access-Control-Allow-Origin': '*' };
   res.status(200).set(corsHeaders).json(MANAGED_TEAMS);
 });
-// --- AI MATCH PREDICTOR ENDPOINT ---
-// Handle OPTIONS (Preflight) requests for CORS
-app.options('/api/predict', (req, res) => {
-  const corsHeaders = { 
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type'
-  };
-  res.status(204).set(corsHeaders).end();
-});
 
-app.post('/api/predict', async (req, res) => {
-  const corsHeaders = { 
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type'
-  };
-  
-  try {
-    const { match } = req.body;
-
-    if (!match) {
-      return res.status(400).set(corsHeaders).json({ error: "Match data is required." });
-    }
-
-    const homeTeam = typeof match.homeTeam === 'object' ? match.homeTeam.name : match.homeTeam;
-    const awayTeam = typeof match.awayTeam === 'object' ? match.awayTeam.name : match.awayTeam;
-
-    // AI-like Simulated Response
-    const predictionResponse = {
-      prediction: {
-        suggestedScore: `${Math.floor(Math.random() * 3)} - ${Math.floor(Math.random() * 3)}`,
-        winProbability: {
-          home: Math.floor(Math.random() * 40) + 30, // 30-70%
-          draw: Math.floor(Math.random() * 20) + 10, // 10-30%
-          away: Math.floor(Math.random() * 40) + 20, // 20-60%
-        },
-        analysis: `Tactical analysis indicates that ${homeTeam}'s midfield dominance could be challenged by ${awayTeam}'s quick transitional play. Expect a tightly contested match primarily fought in the central areas.`,
-        vulnerabilities: {
-          home: "Susceptible to quick counter-attacks on the flanks.",
-          away: "Defensive line struggles against set-piece deliveries."
-        },
-        keyMatchups: [
-          {
-            battle: "Midfield Control",
-            impact: "High",
-            detail: `The central area will dictate the pace. If ${homeTeam} establishes possession, ${awayTeam} will struggle to create chances.`
-          }
-        ],
-        advisor: {
-          captain: `${homeTeam} Star Striker`,
-          viceCaptain: `${awayTeam} Playmaker`,
-          bestXI: [
-            { name: "Player A", team: homeTeam, rating: "8.5", reason: "Excellent form in recent matches." },
-            { name: "Player B", team: awayTeam, rating: "8.2", reason: "High chance creation metric." }
-          ]
-        }
-      }
-    };
-
-    res.status(200).set(corsHeaders).json(predictionResponse);
-  } catch (error) {
-    console.error("Prediction Error:", error);
-    res.status(500).set(corsHeaders).json({ error: "Failed to generate prediction." });
-  }
-});
-// Endpoint to fetch advanced statistics for a single team
 app.get('/api/team-stats/:teamId', (req, res) => {
   const corsHeaders = { 'Access-Control-Allow-Origin': '*' };
   const teamId = req.params.teamId.toLowerCase();
@@ -324,7 +258,6 @@ app.get('/api/team-stats/:teamId', (req, res) => {
   const team = MANAGED_TEAMS.find(t => t.id === teamId || t.code.toLowerCase() === teamId);
 
   if (team) {
-    // Inject dynamic mock ranking for demonstration
     const advancedStats = {
       ...team,
       manager: "Head Coach",
@@ -336,7 +269,9 @@ app.get('/api/team-stats/:teamId', (req, res) => {
     res.status(404).set(corsHeaders).json({ error: "Team not found" });
   }
 });
-// ----------------------------------------------
+
+
+// --- REAL API LOGIC REACTIVATED ---
 
 app.get('/api/db-matches', checkMaintenance, async (_req, res) => {
   const corsHeaders = {
@@ -418,6 +353,7 @@ app.get('/api/db-matches', checkMaintenance, async (_req, res) => {
   }
 });
 
+// ✅ RAPID API ACTIVATED
 app.get('/api/live-matches', checkMaintenance, async (_req, res) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -457,37 +393,126 @@ app.get('/api/live-matches', checkMaintenance, async (_req, res) => {
     }
   }
 
-  if (matchCache) {
-    matchCache.timestamp = Date.now();
+  const now = Date.now();
+  let backoffUntil = await getCache(backoffKey) || 0;
+
+  if (now < backoffUntil) {
+    console.log(`[Rate Limit] Backoff active. Resuming at ${new Date(backoffUntil).toISOString()}`);
+    if (!responseSent) {
+      return res.status(200).set(corsHeaders).json({ matches: matchCache?.data || [], cached: true, backoff: true });
+    }
+    return;
   }
 
-  const minorLeagueFallback: any[] = [{
-    id: 'dummy-live-test',
-    competition: 'Global Test League',
-    status: 'LIVE',
-    minute: 75,
-    time: 'LIVE',
-    date: new Date().toISOString().split('T')[0],
-    homeScore: 2,
-    awayScore: 1,
-    homeTeam: { id: 't1', name: 'Test FC', code: 'TST', logo: '🔴', form: ['W', 'D', 'W'] },
-    awayTeam: { id: 't2', name: 'Demo Utd', code: 'DMU', logo: '🔵', form: ['L', 'W', 'L'] },
-    stats: {
-      possession: { home: 60, away: 40 },
-      shots: { home: 10, away: 4 },
-      shotsOnTarget: { home: 5, away: 2 },
-      fouls: { home: 2, away: 3 }, yellowCards: { home: 0, away: 1 }, redCards: { home: 0, away: 0 }, corners: { home: 4, away: 2 }
-    },
-    events: [],
-    h2h: { matchesPlayed: 1, homeWins: 1, awayWins: 0, draws: 0, lastResults: ['W'] }
-  }];
+  if (now < lastSofaFetchAllowed || inFlightLiveFetch) {
+    if (!responseSent) {
+      return res.status(200).set(corsHeaders).json({ matches: matchCache?.data || [], cached: true });
+    }
+    return;
+  }
 
-  // Trigger goal checking and notifications 
-  checkGoalsAndNotify(minorLeagueFallback);
+  const performFetch = async () => {
+    try {
+      const rawKeys = process.env.RAPID_API_KEY;
+      if (!rawKeys) throw new Error('RAPID_API_KEY is missing.');
+      const keys = rawKeys.split(',').map(k => k.trim()).filter(Boolean);
+      if (keys.length === 0) throw new Error('No valid RapidAPI keys found.');
 
-  // --- TEMP DISABLE RAPIDAPI ---
-  return res.status(200).set(corsHeaders).json({ matches: minorLeagueFallback, cached: false, warning: true });
-  // -----------------------------
+      if (currentSofaKeyIndex >= keys.length) {
+        currentSofaKeyIndex = 0;
+      }
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), SOFA_FETCH_TIMEOUT);
+
+      const todayStr = new Date().toISOString().split('T')[0];
+      const url = `https://sofascore6.p.rapidapi.com/api/sofascore/v1/matches/schedule?date=${todayStr}`;
+      
+      const response = await fetch(url, {
+        headers: {
+          'X-RapidAPI-Key': keys[currentSofaKeyIndex],
+          'X-RapidAPI-Host': 'sofascore6.p.rapidapi.com'
+        },
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        if (response.status === 429) {
+          sofa429Count++;
+          let backoffDuration = Math.min(SOFA_BACKOFF_BASE * Math.pow(2, sofa429Count - 1), SOFA_MAX_BACKOFF);
+          backoffDuration = backoffDuration * (1 - SOFA_BACKOFF_JITTER + Math.random() * (SOFA_BACKOFF_JITTER * 2));
+          backoffUntil = now + backoffDuration;
+          await setCache(backoffKey, backoffUntil, Math.ceil(backoffDuration / 1000));
+          console.warn(`[429] Rate limited. Key ${currentSofaKeyIndex}. Backing off for ${Math.round(backoffDuration / 1000)}s.`);
+          currentSofaKeyIndex = (currentSofaKeyIndex + 1) % keys.length;
+        } else {
+          sofa429Count = 0;
+          lastSofaFetchAllowed = now + SOFA_MIN_INTERVAL;
+        }
+        throw new Error(`RapidAPI returned ${response.status}`);
+      }
+
+      sofa429Count = 0;
+      await setCache(backoffKey, 0, 1);
+      lastSofaFetchAllowed = now + SOFA_MIN_INTERVAL;
+      const data = await response.json();
+
+      let liveOrFinishedMatches = [];
+      if (data && data.events && Array.isArray(data.events)) {
+        liveOrFinishedMatches = data.events.filter((e: any) => e.status && (e.status.type === 'inprogress' || e.status.type === 'finished'));
+      }
+
+      const formattedLiveMatches = liveOrFinishedMatches.map((m: any) => {
+        const homeName = m.homeTeam?.name || 'Home';
+        const awayName = m.awayTeam?.name || 'Away';
+        
+        let status = 'UPCOMING';
+        if (m.status?.type === 'inprogress') status = 'LIVE';
+        if (m.status?.type === 'finished') status = 'FINISHED';
+
+        return {
+          id: String(m.id),
+          competition: m.tournament?.name || 'Other Competitions',
+          status,
+          minute: m.status?.description ? parseInt(m.status.description.replace(/\D/g, '')) || 0 : 0,
+          time: status === 'FINISHED' ? 'FT' : (m.status?.description || ''),
+          date: new Date(m.startTimestamp * 1000).toISOString(),
+          homeScore: m.homeScore?.current ?? 0,
+          awayScore: m.awayScore?.current ?? 0,
+          homeTeam: { id: `t_${m.homeTeam?.id}`, name: homeName, code: homeName.substring(0, 3).toUpperCase(), logo: '⚽' },
+          awayTeam: { id: `t_${m.awayTeam?.id}`, name: awayName, code: awayName.substring(0, 3).toUpperCase(), logo: '⚽' },
+          stats: { possession: { home: 50, away: 50 }, shots: { home: 0, away: 0 }, shotsOnTarget: { home: 0, away: 0 }, fouls: { home: 0, away: 0 }, yellowCards: { home: 0, away: 0 }, redCards: { home: 0, away: 0 }, corners: { home: 0, away: 0 } },
+          events: [],
+          h2h: { matchesPlayed: 0, homeWins: 0, awayWins: 0, draws: 0, lastResults: [] }
+        };
+      });
+
+      matchCache = { data: formattedLiveMatches, timestamp: now };
+      await setCache(redisKey, matchCache.data, Math.ceil(LIVE_CACHE_DURATION / 1000));
+      
+      checkGoalsAndNotify(formattedLiveMatches);
+
+      if (!responseSent) {
+        res.status(200).set(corsHeaders).json({ matches: formattedLiveMatches, cached: false });
+        responseSent = true;
+      }
+    } catch (error: any) {
+      console.error("Live Fetch Error:", error.message);
+      if (!responseSent) {
+        res.status(200).set(corsHeaders).json({ matches: matchCache?.data || [], cached: true, warning: true });
+        responseSent = true;
+      }
+    } finally {
+      inFlightLiveFetch = null;
+    }
+  };
+
+  inFlightLiveFetch = performFetch();
+  return inFlightLiveFetch;
+
+  // 👇 The old manual fallback block has been removed, RapidAPI runs the show now.
 });
 
 app.get('/api/standings', async (req, res) => {
@@ -629,11 +654,27 @@ app.post('/api/poll/vote', checkMaintenance, async (req, res) => {
 let predictionCache: { [matchId: string]: { data: any; timestamp: number; scoreHash: string } } = {};
 const PREDICT_CACHE_DURATION = 3 * 60 * 1000;
 
+app.options('/api/predict', (req, res) => {
+  const corsHeaders = { 
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type'
+  };
+  res.status(204).set(corsHeaders).end();
+});
+
+// ✅ GOOGLE GEMINI AI ACTIVATED
 app.post('/api/predict', checkMaintenance, async (req, res) => {
+  const corsHeaders = { 
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type'
+  };
+  
   try {
     const { match } = req.body;
     if (!match || !match.id) {
-      return res.status(400).json({ error: "Invalid match payload provided." });
+      return res.status(400).set(corsHeaders).json({ error: "Invalid match payload provided." });
     }
 
     const matchId = String(match.id);
@@ -645,24 +686,88 @@ app.post('/api/predict', checkMaintenance, async (req, res) => {
       (now - predictionCache[matchId].timestamp < PREDICT_CACHE_DURATION) &&
       predictionCache[matchId].scoreHash === currentScoreHash
     ) {
-      return res.json({ prediction: predictionCache[matchId].data, cached: true });
+      return res.status(200).set(corsHeaders).json({ prediction: predictionCache[matchId].data, cached: true });
     }
 
-    // --- TEMP DISABLE GEMINI ---
-    return res.json({
-      prediction: {
-        analysis: "AI Analysis is temporarily paused to save API limits.",
-        vulnerabilities: { home: "N/A", away: "N/A" },
-        keyMatchups: [],
-        winProbability: { "home": 33, "draw": 34, "away": 33 },
-        suggestedScore: "0-0"
-      },
-      cached: true
-    });
-    // ---------------------------
-  } catch (error: any) {
-    res.status(500).json({ error: 'Gemini Analysis Interrupted', details: error.message });
+    const homeTeam = typeof match.homeTeam === 'object' ? match.homeTeam.name : match.homeTeam;
+    const awayTeam = typeof match.awayTeam === 'object' ? match.awayTeam.name : match.awayTeam;
+
+    const geminiClients = getGeminiClients();
+    let lastError = null;
+
+    for (const aiClient of geminiClients) {
+      try {
+        const model = aiClient.getGenerativeModel({
+          model: "gemini-1.5-flash",
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 800,
+            responseMimeType: "application/json"
+          }
+        });
+
+        const prompt = `Analyze the football match between ${homeTeam} and ${awayTeam}.
+Current Status: ${match.status || 'Upcoming'}
+Current Score: ${homeTeam} ${match.homeScore ?? 0} - ${match.awayScore ?? 0} ${awayTeam}
+Time/Minute: ${match.time || match.minute || '0'}
+
+Return ONLY a valid JSON object with the following structure (no markdown, no backticks):
+{
+  "analysis": "A detailed 3-4 sentence tactical analysis of the match.",
+  "vulnerabilities": {
+    "home": "1-2 sentences on ${homeTeam}'s weakness.",
+    "away": "1-2 sentences on ${awayTeam}'s weakness."
+  },
+  "keyMatchups": [
+    { "battle": "Short name of battle", "impact": "High/Medium", "detail": "1 sentence explanation." }
+  ],
+  "winProbability": { "home": 45, "draw": 25, "away": 30 },
+  "suggestedScore": "Predicted final score, e.g. 2-1",
+  "advisor": {
+    "captain": "Name of best player to captain",
+    "viceCaptain": "Name of vice captain",
+    "bestXI": [
+      { "name": "Player 1", "team": "${homeTeam}", "rating": "8.5", "reason": "Why they are good" },
+      { "name": "Player 2", "team": "${awayTeam}", "rating": "8.0", "reason": "Why they are good" }
+    ]
   }
+}
+Make the probabilities sum to 100. Make the analysis sound professional and tactical.`;
+
+        const result = await model.generateContent(prompt);
+        const responseText = result.response.text().trim();
+        
+        let cleanedJsonStr = responseText;
+        if (cleanedJsonStr.startsWith('```json')) {
+            cleanedJsonStr = cleanedJsonStr.replace(/^```json\n/, '').replace(/\n```$/, '');
+        } else if (cleanedJsonStr.startsWith('```')) {
+            cleanedJsonStr = cleanedJsonStr.replace(/^```\n/, '').replace(/\n```$/, '');
+        }
+
+        const predictionData = JSON.parse(cleanedJsonStr);
+        
+        predictionCache[matchId] = {
+          data: predictionData,
+          timestamp: now,
+          scoreHash: currentScoreHash
+        };
+
+        return res.status(200).set(corsHeaders).json({ prediction: predictionData, cached: false });
+
+      } catch (error: any) {
+        console.error(`Gemini API Error with one key:`, error.message);
+        lastError = error;
+      }
+    }
+
+    throw lastError || new Error("All Gemini API keys failed.");
+
+  } catch (error: any) {
+    console.error('Gemini Analysis Interrupted', error.message);
+    res.status(500).set(corsHeaders).json({ error: 'Gemini Analysis Interrupted', details: error.message });
+  }
+
+  // 👇 The old manual fallback block has been removed, Gemini runs the show now.
 });
 
 // --- PUSH NOTIFICATION LOGIC ---
@@ -1033,7 +1138,7 @@ app.get('/predictions/:matchSlug', (req, res) => {
     res.status(200).send(seoPage(
       `${home} vs ${away} Prediction — AI Football Analysis | E2Match.ai`,
       `AI-powered prediction for ${home} vs ${away}. Win probabilities, tactical analysis, and fantasy advice. Free on E2Match.ai.`,
-      `${home} vs ${away} prediction, football prediction, ai prediction football`,
+      `${home} vs ${away} prediction, football football prediction, ai prediction football`,
       body,
       `/predictions/${slug}`
     ));
