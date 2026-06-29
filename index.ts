@@ -426,8 +426,8 @@ app.get('/api/live-matches', checkMaintenance, async (_req, res) => {
       const timeoutId = setTimeout(() => controller.abort(), SOFA_FETCH_TIMEOUT);
 
       const todayStr = new Date().toISOString().split('T')[0];
-      const url = `https://sofascore6.p.rapidapi.com/api/sofascore/v1/matches/schedule?date=${todayStr}`;
-      
+      const url = `https://sofascore6.p.rapidapi.com/sport/football/events/date/${todayStr}`;
+
       const response = await fetch(url, {
         headers: {
           'X-RapidAPI-Key': keys[currentSofaKeyIndex],
