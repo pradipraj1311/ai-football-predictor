@@ -1,11 +1,13 @@
 import React from 'react';
 import { Target, Zap, TrendingUp, AlertCircle, Coins, Activity } from 'lucide-react';
-import { GLOBAL_TEAMS_DIRECTORY } from '../data';
 
-const teamLogoMap = GLOBAL_TEAMS_DIRECTORY.reduce((acc, team) => {
-    acc[team.code] = team.logo;
-    return acc;
-}, {} as Record<string, string>);
+const teamLogoMap: Record<string, string> = {
+    'ARG': '🇦🇷',
+    'FRA': '🇫🇷',
+    'ENG': '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
+    'BRA': '🇧🇷',
+    'POR': '🇵🇹'
+};
 
 export const PlayerProps: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     // Simulated AI Prop Data for Premium Feel
@@ -63,7 +65,7 @@ export const PlayerProps: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                                 <div>
                                     <h3 className="text-xl font-black text-white">{prop.player}</h3>
                                     <span className="text-[10px] font-mono font-bold bg-white/5 border border-white/10 text-slate-400 px-1.5 py-0.5 rounded mt-1 inline-flex items-center gap-1.5">
-                                        {teamLogoMap[prop.team]} {prop.team}
+                                        {teamLogoMap[prop.team] || '⚽'} {prop.team}
                                     </span>
                                 </div>
                                 <div className="text-right">
