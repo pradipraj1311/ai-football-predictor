@@ -924,32 +924,50 @@ let previousScoresCache: { [matchId: string]: string } = {};
 const checkGoalsAndNotify = async (liveMatches: any[]) => {
   liveMatches.forEach(match => {
     if (match.status === 'LIVE' && match.homeScore !== undefined && match.awayScore !== undefined) {
-      const matchId = String(match.id);
-      const currentScoreHash = `${match.homeScore}-${match.awayScore}`;
+        const matchId = String(match.id);
+        const currentScoreHash = `${match.homeScore}-${match.awayScore}`;
+        const prevScoreHash = previousScoresCache[matchId];
 
-      const prevScoreHash = previousScoresCache[matchId];
+        if (prevScoreHash && prevScoreHash !== currentScoreHash) {
+            const prevScores = prevScoreHash.split('-');
+            const prevHome = parseInt(prevScores[0]);
+            const prevAway = parseInt(prevScores[1]);
 
-      if (prevScoreHash && prevScoreHash !== currentScoreHash) {
-        let goalMessage = '';
-        const prevScores = prevScoreHash.split('-');
-        const prevHome = parseInt(prevScores[0]);
-        const prevAway = parseInt(prevScores[1]);
+            let goalMessage = '';
+            let scoringTeamName = '';
 
-        if (match.homeScore > prevHome) {
-          goalMessage = `⚽ GOAL! ${match.homeTeam.name} scores!`;
-        } else if (match.awayScore > prevAway) {
-          goalMessage = `⚽ GOAL! ${match.awayTeam.name} scores!`;
-        } else {
-          goalMessage = `⚽ SCORE UPDATE!`;
+            if (match.homeScore > prevHome) {
+                goalMessage = `⚽ GOAL! ${match.homeTeam.name} scores!`;
+                scoringTeamName = match.homeTeam.name;
+            } else if (match.awayScore > prevAway) {
+                goalMessage = `⚽ GOAL! ${match.awayTeam.name} scores!`;
+                scoringTeamName = match.awayTeam.name;
+            } else {
+                goalMessage = `⚽ SCORE UPDATE!`;
+            }
+
+            const fullMessage = `${match.homeTeam.name} ${match.homeScore} - ${match.awayScore} ${match.awayTeam.name}`;
+
+            // 1. Send specific alert to users following the HOME team
+            if (match.homeTeam.code) {
+                sendFirebaseTopicNotification(`team_${match.homeTeam.code}`, goalMessage, fullMessage);
+            }
+
+            // 2. Send specific alert to users following the AWAY team
+            if (match.awayTeam.code) {
+                sendFirebaseTopicNotification(`team_${match.awayTeam.code}`, goalMessage, fullMessage);
+            }
+
+            // 3. SPAM CONTROL: Only send to 'global_goal_alerts' if it's a massive competition
+            // We filter out minor leagues so users don't get spammed.
+            const premiumCompetitions = ['FIFA World Cup 2026', 'UEFA Champions League', 'Premier League', 'LaLiga'];
+            const isPremiumMatch = premiumCompetitions.some(comp => match.competition.includes(comp));
+
+            if (isPremiumMatch) {
+                sendFirebaseTopicNotification('global_goal_alerts', goalMessage, fullMessage);
+            }
         }
-
-        const fullMessage = `${match.homeTeam.name} ${match.homeScore} - ${match.awayScore} ${match.awayTeam.name}`;
-
-        // Trigger the actual notification
-        sendFirebaseTopicNotification('global_goal_alerts', goalMessage, fullMessage);
-      }
-
-      previousScoresCache[matchId] = currentScoreHash;
+        previousScoresCache[matchId] = currentScoreHash;
     }
   });
 };
