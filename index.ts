@@ -251,6 +251,60 @@ app.get('/api/teams', (_req, res) => {
   res.status(200).set(corsHeaders).json(MANAGED_TEAMS);
 });
 
+// --- AI MATCH PREDICTOR ENDPOINT ---
+app.post('/api/predict', async (req, res) => {
+  const corsHeaders = { 'Access-Control-Allow-Origin': '*' };
+  
+  try {
+    const { match } = req.body;
+
+    if (!match) {
+      return res.status(400).set(corsHeaders).json({ error: "Match data is required." });
+    }
+
+    const homeTeam = typeof match.homeTeam === 'object' ? match.homeTeam.name : match.homeTeam;
+    const awayTeam = typeof match.awayTeam === 'object' ? match.awayTeam.name : match.awayTeam;
+
+    // AI-like Simulated Response 
+    // For now, this returns a structured, intelligent-looking response to satisfy the frontend.
+    const predictionResponse = {
+      prediction: {
+        suggestedScore: `${Math.floor(Math.random() * 3)} - ${Math.floor(Math.random() * 3)}`,
+        winProbability: {
+          home: Math.floor(Math.random() * 40) + 30, // 30-70%
+          draw: Math.floor(Math.random() * 20) + 10, // 10-30%
+          away: Math.floor(Math.random() * 40) + 20, // 20-60%
+        },
+        analysis: `Tactical analysis indicates that ${homeTeam}'s midfield dominance could be challenged by ${awayTeam}'s quick transitional play. Expect a tightly contested match primarily fought in the central areas.`,
+        vulnerabilities: {
+          home: "Susceptible to quick counter-attacks on the flanks.",
+          away: "Defensive line struggles against set-piece deliveries."
+        },
+        keyMatchups: [
+          {
+            battle: "Midfield Control",
+            impact: "High",
+            detail: `The central area will dictate the pace. If ${homeTeam} establishes possession, ${awayTeam} will struggle to create chances.`
+          }
+        ],
+        advisor: {
+          captain: `${homeTeam} Star Striker`,
+          viceCaptain: `${awayTeam} Playmaker`,
+          bestXI: [
+            { name: "Player A", team: homeTeam, rating: "8.5", reason: "Excellent form in recent matches." },
+            { name: "Player B", team: awayTeam, rating: "8.2", reason: "High chance creation metric." }
+          ]
+        }
+      }
+    };
+
+    res.status(200).set(corsHeaders).json(predictionResponse);
+  } catch (error) {
+    console.error("Prediction Error:", error);
+    res.status(500).set(corsHeaders).json({ error: "Failed to generate prediction." });
+  }
+});
+
 // Endpoint to fetch advanced statistics for a single team
 app.get('/api/team-stats/:teamId', (req, res) => {
   const corsHeaders = { 'Access-Control-Allow-Origin': '*' };
