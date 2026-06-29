@@ -250,10 +250,23 @@ app.get('/api/teams', (_req, res) => {
   const corsHeaders = { 'Access-Control-Allow-Origin': '*' };
   res.status(200).set(corsHeaders).json(MANAGED_TEAMS);
 });
-
 // --- AI MATCH PREDICTOR ENDPOINT ---
+// Handle OPTIONS (Preflight) requests for CORS
+app.options('/api/predict', (req, res) => {
+  const corsHeaders = { 
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type'
+  };
+  res.status(204).set(corsHeaders).end();
+});
+
 app.post('/api/predict', async (req, res) => {
-  const corsHeaders = { 'Access-Control-Allow-Origin': '*' };
+  const corsHeaders = { 
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type'
+  };
   
   try {
     const { match } = req.body;
@@ -265,8 +278,7 @@ app.post('/api/predict', async (req, res) => {
     const homeTeam = typeof match.homeTeam === 'object' ? match.homeTeam.name : match.homeTeam;
     const awayTeam = typeof match.awayTeam === 'object' ? match.awayTeam.name : match.awayTeam;
 
-    // AI-like Simulated Response 
-    // For now, this returns a structured, intelligent-looking response to satisfy the frontend.
+    // AI-like Simulated Response
     const predictionResponse = {
       prediction: {
         suggestedScore: `${Math.floor(Math.random() * 3)} - ${Math.floor(Math.random() * 3)}`,
@@ -304,7 +316,6 @@ app.post('/api/predict', async (req, res) => {
     res.status(500).set(corsHeaders).json({ error: "Failed to generate prediction." });
   }
 });
-
 // Endpoint to fetch advanced statistics for a single team
 app.get('/api/team-stats/:teamId', (req, res) => {
   const corsHeaders = { 'Access-Control-Allow-Origin': '*' };
