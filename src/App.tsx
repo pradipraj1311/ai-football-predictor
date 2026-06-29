@@ -43,6 +43,9 @@ function normalizeTeamName(name: string): string {
 
 function App() {
   const [matches, setMatches] = useState<Match[]>([]);
+  // NEW: State to hold teams fetched from the backend API
+  const [teams, setTeams] = useState<FootballTeamProfile[]>(GLOBAL_TEAMS_DIRECTORY);
+  
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   const [dynamicStandings, setDynamicStandings] = useState<Record<string, any>>({ 'FIFA World Cup 2026': WORLD_CUP_STANDINGS });
   const [selectedTournament, setSelectedTournament] = useState<string>('FIFA World Cup 2026');
@@ -77,6 +80,26 @@ function App() {
   };
   
   const finishedMatchesRef = useRef<Match[]>(initialFinishedMatches());
+
+  // Fetch teams from backend API when component mounts
+  useEffect(() => {
+    const loadTeams = async () => {
+      try {
+        const response = await fetch('/api/teams');
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.length > 0) {
+            setTeams(data);
+          }
+        } else {
+          console.warn("Could not fetch teams, using local data fallback.");
+        }
+      } catch (error) {
+        console.error("Error fetching teams data:", error);
+      }
+    };
+    loadTeams();
+  }, []);
 
   useEffect(() => {
     if (!matches.length) return;
@@ -666,9 +689,11 @@ function App() {
               <button onClick={() => { setActiveTab('UPCOMING'); setSelectedTeam(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'UPCOMING' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><Calendar className="w-3 h-3" /> Upcoming</button>
               <button onClick={() => { setActiveTab('FINISHED'); setSelectedTeam(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'FINISHED' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><History className="w-3 h-3" /> Results</button>
               <button onClick={() => { setActiveTab('STANDINGS'); setSelectedTeam(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'STANDINGS' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><ListOrdered className="w-3 h-3" /> Table</button>
-              <button onClick={() => { setActiveTab('TEAMS'); setSelectedTeam(GLOBAL_TEAMS_DIRECTORY[0]); }} className={`relative py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'TEAMS' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}>
+              
+              <button onClick={() => { setActiveTab('TEAMS'); setSelectedTeam(teams[0] || null); }} className={`relative py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'TEAMS' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}>
                 <Shield className="w-3 h-3" /> Teams <span className="absolute top-0 right-1 text-[7px] font-bold bg-indigo-500 text-white px-1 rounded-full">NEW</span>
               </button>
+
               <button onClick={() => { setActiveTab('POLL'); setSelectedTeam(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'POLL' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><Trophy className="w-3 h-3" /> Poll</button>
             </div>
 
@@ -787,7 +812,8 @@ function App() {
                   )}
                 </>
               ) : (
-                GLOBAL_TEAMS_DIRECTORY.map((team, index) => (
+                // Now using the API-fetched `teams` state instead of static `GLOBAL_TEAMS_DIRECTORY`
+                teams.map((team, index) => (
                   <div key={team.id} onClick={() => setSelectedTeam(team)} className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all animate-fade-in-up ${selectedTeam?.id === team.id ? 'bg-gradient-to-r from-indigo-950/40 to-[#0B1121] border-indigo-500/50' : 'bg-[#0B1121] border-white/5 hover:border-indigo-500/30'}`} style={{ animationDelay: `${index * 30}ms` }}>
                     <div className="flex items-center gap-3">
                       <span className="text-xl">{team.logo || '⚽'}</span>
@@ -836,9 +862,13 @@ function App() {
                   <div className="bg-[#0B1121] border border-white/5 rounded-2xl p-6 shadow-xl">
                     <h4 className="flex items-center gap-2 text-[10px] font-black text-slate-400 tracking-widest uppercase mb-4"><Activity className="w-4 h-4 text-emerald-400" /> Form Analytics</h4>
                     <div className="flex gap-2">
-                      {selectedTeam.form.map((f, i) => (
-                        <span key={i} className={`w-8 h-8 rounded-lg text-xs font-black flex items-center justify-center font-mono ${f === 'W' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : f === 'D' ? 'bg-slate-500/20 text-slate-400 border border-white/10' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>{f}</span>
-                      ))}
+                      {selectedTeam.form && selectedTeam.form.length > 0 ? (
+                        selectedTeam.form.map((f, i) => (
+                          <span key={i} className={`w-8 h-8 rounded-lg text-xs font-black flex items-center justify-center font-mono ${f === 'W' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : f === 'D' ? 'bg-slate-500/20 text-slate-400 border border-white/10' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>{f}</span>
+                        ))
+                      ) : (
+                        <span className="text-slate-500 text-xs">No recent form data available.</span>
+                      )}
                     </div>
                   </div>
                 </div>
