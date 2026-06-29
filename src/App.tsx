@@ -13,7 +13,7 @@ import { PrivacyPolicy } from './components/PrivacyPolicy';
 import { LoginPage } from './components/LoginPage';
 import { MaintenancePage } from './components/MaintenancePage';
 import { TermsOfService } from './components/TermsOfService';
-import { GLOBAL_TEAMS_DIRECTORY, WORLD_CUP_STANDINGS, FootballTeamProfile } from './data';
+import { WORLD_CUP_STANDINGS, FootballTeamProfile } from './data';
 import { BrainCircuit, Shield, Calendar, History, Globe, Coins, Thermometer, BellRing, Target, ListOrdered, Activity, Trophy, Play, Youtube, Swords, LogOut } from 'lucide-react';
 
 // Enhanced data consistency aliases for API responses
@@ -43,8 +43,8 @@ function normalizeTeamName(name: string): string {
 
 function App() {
   const [matches, setMatches] = useState<Match[]>([]);
-  // NEW: State to hold teams fetched from the backend API
-  const [teams, setTeams] = useState<FootballTeamProfile[]>(GLOBAL_TEAMS_DIRECTORY);
+  // Start with an empty array for teams, we will fetch it from the backend
+  const [teams, setTeams] = useState<FootballTeamProfile[]>([]);
   
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   const [dynamicStandings, setDynamicStandings] = useState<Record<string, any>>({ 'FIFA World Cup 2026': WORLD_CUP_STANDINGS });
@@ -92,7 +92,7 @@ function App() {
             setTeams(data);
           }
         } else {
-          console.warn("Could not fetch teams, using local data fallback.");
+          console.warn("Could not fetch teams from backend.");
         }
       } catch (error) {
         console.error("Error fetching teams data:", error);
@@ -812,8 +812,8 @@ function App() {
                   )}
                 </>
               ) : (
-                // Now using the API-fetched `teams` state instead of static `GLOBAL_TEAMS_DIRECTORY`
-                teams.map((team, index) => (
+                // Safe mapping using the dynamic `teams` state
+                (teams && teams.length > 0) ? teams.map((team, index) => (
                   <div key={team.id} onClick={() => setSelectedTeam(team)} className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all animate-fade-in-up ${selectedTeam?.id === team.id ? 'bg-gradient-to-r from-indigo-950/40 to-[#0B1121] border-indigo-500/50' : 'bg-[#0B1121] border-white/5 hover:border-indigo-500/30'}`} style={{ animationDelay: `${index * 30}ms` }}>
                     <div className="flex items-center gap-3">
                       <span className="text-xl">{team.logo || '⚽'}</span>
@@ -821,7 +821,9 @@ function App() {
                     </div>
                     <span className="text-[9px] font-mono font-bold bg-white/5 border border-white/10 text-slate-400 px-1.5 py-0.5 rounded">{team.code}</span>
                   </div>
-                ))
+                )) : (
+                  <div className="text-xs text-slate-500 text-center p-8">Loading teams...</div>
+                )
               )}
             </div>
           </div>
