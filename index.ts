@@ -664,28 +664,22 @@ app.options('/api/predict', (req, res) => {
 });
 
 // ✅ GOOGLE GEMINI AI ACTIVATED
-app.post('/api/predict', checkMaintenance, async (req, res) => {
+app.post('/api/predict', checkMaintenance, async (req, res) => { // ✅ GOOGLE GEMINI AI ACTIVATED (NEW SDK FIX)
   const corsHeaders = { 
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type'
   };
-  
+
   try {
     const { match } = req.body;
-    if (!match || !match.id) {
-      return res.status(400).set(corsHeaders).json({ error: "Invalid match payload provided." });
-    }
+    if (!match || !match.id) return res.status(400).set(corsHeaders).json({ error: "Invalid match payload." });
 
     const matchId = String(match.id);
     const currentScoreHash = `${match.homeScore ?? 0}-${match.awayScore ?? 0}`;
     const now = Date.now();
 
-    if (
-      predictionCache[matchId] &&
-      (now - predictionCache[matchId].timestamp < PREDICT_CACHE_DURATION) &&
-      predictionCache[matchId].scoreHash === currentScoreHash
-    ) {
+    if (predictionCache[matchId] && (now - predictionCache[matchId].timestamp < 3 * 60 * 1000) && predictionCache[matchId].scoreHash === currentScoreHash) {
       return res.status(200).set(corsHeaders).json({ prediction: predictionCache[matchId].data, cached: true });
     }
 
@@ -697,55 +691,29 @@ app.post('/api/predict', checkMaintenance, async (req, res) => {
 
     for (const aiClient of geminiClients) {
       try {
-        const prompt = `Analyze the football match between ${homeTeam} and ${awayTeam}.
-Current Status: ${match.status || 'Upcoming'}
-Current Score: ${homeTeam} ${match.homeScore ?? 0} - ${match.awayScore ?? 0} ${awayTeam}
-Time/Minute: ${match.time || match.minute || '0'}
-
-Return ONLY a valid JSON object with the following structure (no markdown, no backticks):
+        const prompt = `Analyze the football match between ${homeTeam} and ${awayTeam}. Current Status: ${match.status || 'Upcoming'}, Current Score: ${homeTeam} ${match.homeScore ?? 0} - ${match.awayScore ?? 0} ${awayTeam}.
+Return ONLY valid JSON (no markdown):
 {
-  "analysis": "A detailed 3-4 sentence tactical analysis of the match.",
-  "vulnerabilities": {
-    "home": "1-2 sentences on ${homeTeam}'s weakness.",
-    "away": "1-2 sentences on ${awayTeam}'s weakness."
-  },
-  "keyMatchups": [
-    { "battle": "Short name of battle", "impact": "High/Medium", "detail": "1 sentence explanation." }
-  ],
+  "analysis": "3-4 sentence tactical analysis.",
+  "vulnerabilities": { "home": "1 sentence.", "away": "1 sentence." },
+  "keyMatchups": [ { "battle": "Name", "impact": "High", "detail": "1 sentence." } ],
   "winProbability": { "home": 45, "draw": 25, "away": 30 },
-  "suggestedScore": "Predicted final score, e.g. 2-1",
-  "advisor": {
-    "captain": "Name of best player to captain",
-    "viceCaptain": "Name of vice captain",
-    "bestXI": [
-      { "name": "Player 1", "team": "${homeTeam}", "rating": "8.5", "reason": "Why they are good" },
-      { "name": "Player 2", "team": "${awayTeam}", "rating": "8.0", "reason": "Why they are good" }
-    ]
-  }
-}
-Make the probabilities sum to 100. Make the analysis sound professional and tactical.`;
+  "suggestedScore": "2-1",
+  "advisor": { "captain": "Player", "viceCaptain": "Player", "bestXI": [ { "name": "Player 1", "team": "${homeTeam}", "rating": "8.5", "reason": "Good form." } ] }
+}`;
 
-        const model = aiClient.getGenerativeModel({ model: "gemini-1.5-flash" });
-        const result = await model.generateContent({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 800,
-            responseMimeType: "application/json"
-          }
+        // 🔴 આ લાઈન ખાસ ચેક કરો! જૂની 'getGenerativeModel' નથી વાપરવાની! 🔴
+        const response = await aiClient.models.generateContent({
+          model: "gemini-1.5-flash",
+          contents: prompt,
+          config: { temperature: 0.7, responseMimeType: "application/json" }
         });
 
-        const responseText = result.response.text();
-        
-        let cleanedJsonStr = responseText;
-        if (cleanedJsonStr.startsWith('```json')) {
-            cleanedJsonStr = cleanedJsonStr.replace(/^```json\n/, '').replace(/\n```$/, '');
-        } else if (cleanedJsonStr.startsWith('```')) {
-            cleanedJsonStr = cleanedJsonStr.replace(/^```\n/, '').replace(/\n```$/, '');
-        }
+        let cleanedJsonStr = (response.text || "").trim();
+        if (cleanedJsonStr.startsWith('```json')) cleanedJsonStr = cleanedJsonStr.replace(/^```json\n/, '').replace(/\n```$/, '');
+        else if (cleanedJsonStr.startsWith('```')) cleanedJsonStr = cleanedJsonStr.replace(/^```\n/, '').replace(/\n```$/, '');
 
-        const predictionData = JSON.parse(cleanedJsonStr.trim());
-        
+        const predictionData = JSON.parse(cleanedJsonStr);
         predictionCache[matchId] = {
           data: predictionData,
           timestamp: now,
@@ -753,9 +721,8 @@ Make the probabilities sum to 100. Make the analysis sound professional and tact
         };
 
         return res.status(200).set(corsHeaders).json({ prediction: predictionData, cached: false });
-
       } catch (error: any) {
-        console.error(`Gemini API Error with one key:`, error.message);
+        console.error(`Gemini Error:`, error.message);
         lastError = error;
       }
     }
@@ -766,8 +733,6 @@ Make the probabilities sum to 100. Make the analysis sound professional and tact
     console.error('Gemini Analysis Interrupted', error.message);
     res.status(500).set(corsHeaders).json({ error: 'Gemini Analysis Interrupted', details: error.message });
   }
-
-  // 👇 The old manual fallback block has been removed, Gemini runs the show now.
 });
 
 // --- PUSH NOTIFICATION LOGIC ---
