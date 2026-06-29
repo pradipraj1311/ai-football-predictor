@@ -1,12 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Match } from '../types';
 import { Cpu, Target, TrendingUp, Zap, Sparkles, Star, AlertTriangle, Activity, Volume2, Square, MapPin } from 'lucide-react';
-import { GLOBAL_TEAMS_DIRECTORY } from '../data';
-
-const teamLogoMap = GLOBAL_TEAMS_DIRECTORY.reduce((acc, team) => {
-  acc[team.name] = team.logo;
-  return acc;
-}, {} as Record<string, string>);
 
 export const AIPredictor: React.FC<{ match: Match }> = ({ match }) => {
   const [data, setData] = useState<any>(null);
@@ -171,7 +165,7 @@ export const AIPredictor: React.FC<{ match: Match }> = ({ match }) => {
               </div>
               <div className="grid grid-cols-3 gap-2 mb-4">
                 <div className="bg-[#0f172a] border border-white/5 rounded-lg p-2 text-center hover:border-emerald-500/30 transition-colors">
-                  <span className="block text-[9px] text-slate-400 uppercase font-bold mb-0.5">1 ({match.homeTeam?.code || 'HOM'})</span>
+                  <span className="block text-[9px] text-slate-400 uppercase font-bold mb-0.5">1 ({typeof match.homeTeam === 'object' ? match.homeTeam.code : 'HOM'})</span>
                   <span className="font-mono font-black text-emerald-400">{oddsHome}</span>
                 </div>
                 <div className="bg-[#0f172a] border border-white/5 rounded-lg p-2 text-center hover:border-slate-400/30 transition-colors">
@@ -179,7 +173,7 @@ export const AIPredictor: React.FC<{ match: Match }> = ({ match }) => {
                   <span className="font-mono font-black text-slate-300">{oddsDraw}</span>
                 </div>
                 <div className="bg-[#0f172a] border border-white/5 rounded-lg p-2 text-center hover:border-blue-500/30 transition-colors">
-                  <span className="block text-[9px] text-slate-400 uppercase font-bold mb-0.5">2 ({match.awayTeam?.code || 'AWY'})</span>
+                  <span className="block text-[9px] text-slate-400 uppercase font-bold mb-0.5">2 ({typeof match.awayTeam === 'object' ? match.awayTeam.code : 'AWY'})</span>
                   <span className="font-mono font-black text-blue-400">{oddsAway}</span>
                 </div>
               </div>
@@ -223,11 +217,11 @@ export const AIPredictor: React.FC<{ match: Match }> = ({ match }) => {
                   </h5>
                   <div className="space-y-3">
                     <div>
-                      <span className="text-[10px] text-slate-500 font-bold uppercase block mb-0.5">{match.homeTeam?.code || 'HOM'} Weakness</span>
+                      <span className="text-[10px] text-slate-500 font-bold uppercase block mb-0.5">{typeof match.homeTeam === 'object' ? match.homeTeam.code : 'HOM'} Weakness</span>
                       <p className="text-xs text-slate-300">{data.vulnerabilities?.home || "Analyzing..."}</p>
                     </div>
                     <div>
-                      <span className="text-[10px] text-slate-500 font-bold uppercase block mb-0.5">{match.awayTeam?.code || 'AWY'} Weakness</span>
+                      <span className="text-[10px] text-slate-500 font-bold uppercase block mb-0.5">{typeof match.awayTeam === 'object' ? match.awayTeam.code : 'AWY'} Weakness</span>
                       <p className="text-xs text-slate-300">{data.vulnerabilities?.away || "Analyzing..."}</p>
                     </div>
                   </div>
@@ -291,7 +285,7 @@ export const AIPredictor: React.FC<{ match: Match }> = ({ match }) => {
                     <div className="flex flex-col">
                       <span className="font-bold text-white text-sm group-hover:text-indigo-300 transition-colors">{player.name}</span>
                       <span className="text-[9px] text-slate-500 font-mono uppercase tracking-wider mt-0.5 flex items-center gap-1.5">
-                        {teamLogoMap[player.team]} {player.team}
+                        {player.team === (typeof match.homeTeam === 'object' ? match.homeTeam.name : match.homeTeam) ? (typeof match.homeTeam === 'object' ? match.homeTeam.logo : '⚽') : (typeof match.awayTeam === 'object' ? match.awayTeam.logo : '⚽')} {player.team}
                       </span>
                     </div>
                     <div className="flex gap-1 items-center bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded font-mono font-bold z-10">
