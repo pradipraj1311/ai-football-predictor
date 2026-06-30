@@ -903,9 +903,14 @@ const sendFirebaseTopicNotification = async (topic: string, title: string, body:
       },
     },
     apns: {
+      headers: {
+        'apns-priority': '10', // 10 for immediate, 5 for power-saving
+        'apns-push-type': 'alert',
+      },
       payload: {
         aps: {
           sound: 'default',
+          'interruption-level': 'time-sensitive', // For iOS 15+, makes it a high-priority notification.
         },
       },
     },
@@ -971,6 +976,83 @@ const checkGoalsAndNotify = async (liveMatches: any[]) => {
     }
   });
 };
+
+// --- 🧠 DAILY ENGAGEMENT NOTIFICATION LOGIC ---
+// Zomato-style clever, varied notifications to drive app opens
+
+const ENGAGEMENT_MESSAGES = [
+  {
+    title: "🔮 AI Predictions are Ready!",
+    body: "Our Neural Engine has just calculated the odds for tonight's biggest matches. Tap to see the hidden tactical advantages.",
+  },
+  {
+    title: "🧠 Test Your Football IQ",
+    body: "Think you know the beautiful game? Today's Trivia Quiz is live. Can you score a perfect 5/5?",
+  },
+  {
+    title: "🎯 Fantasy Advisor Alert",
+    body: "Struggling to pick a captain? Our AI has analyzed 10,000+ data points to find today's hidden gem.",
+  },
+  {
+    title: "🔥 High-Stakes Match Tonight",
+    body: "The tension is building. Dive into our live matrix overview before kickoff to see where the game will be won.",
+  },
+  {
+    title: "📊 Form Analytics Updated",
+    body: "We've just crunched the numbers from the latest fixtures. See which teams are peaking at the right moment.",
+  },
+  {
+    title: "⚔️ Key Pitch Battles",
+    body: "Midfield masterclass or defensive disaster? See our AI's breakdown of where today's matches will be decided.",
+  }
+];
+
+// This endpoint can be hit (e.g., via a CRON job or manually) to trigger an engagement push
+app.get('/api/daily-engage', checkMaintenance, async (_req, res) => {
+  const corsHeaders = { 'Access-Control-Allow-Origin': '*' };
+  
+  try {
+    // 1. Pick a random clever message
+    const randomMsg = ENGAGEMENT_MESSAGES[Math.floor(Math.random() * ENGAGEMENT_MESSAGES.length)];
+
+    // 2. Send it to the default 'global_goal_alerts' topic. 
+    // Since users are subscribed to this by default (for major match goals), 
+    // they will receive these engagement pushes even if they haven't explicitly followed a team.
+    await sendFirebaseTopicNotification(
+      'global_goal_alerts', 
+      randomMsg.title, 
+      randomMsg.body
+    );
+
+    res.status(200).set(corsHeaders).json({ 
+      success: true, 
+      message_sent: randomMsg 
+    });
+  } catch (error) {
+    console.error("Failed to send engagement push:", error);
+    res.status(500).set(corsHeaders).json({ error: "Failed to send engagement push." });
+  }
+});
+
+// --- 🚀 FUTURE UPDATE ANNOUNCEMENT ROUTE ---
+// Use this manually when you deploy a massive new feature
+app.post('/api/announce-update', checkAdminPassword, async (req, res) => {
+  const corsHeaders = { 'Access-Control-Allow-Origin': '*' };
+  try {
+    const { title, body } = req.body;
+    
+    if (!title || !body) {
+      return res.status(400).set(corsHeaders).json({ error: "Title and body are required." });
+    }
+
+    await sendFirebaseTopicNotification('global_goal_alerts', `🌟 UPDATE: ${title}`, body);
+
+    res.status(200).set(corsHeaders).json({ success: true, message: "Update announcement sent!" });
+  } catch (error) {
+    console.error("Failed to send update announcement:", error);
+    res.status(500).set(corsHeaders).json({ error: "Failed to send announcement." });
+  }
+});
 
 // --- SECRET TEST ROUTE ---
 app.get('/api/test-noti', async (req, res) => {
