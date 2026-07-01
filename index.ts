@@ -800,6 +800,38 @@ app.post('/api/poll/vote', checkMaintenance, async (req, res) => {
   }
 });
 
+// ---  DAILY TRIVIA QUIZ ENDPOINT ---
+app.get('/api/trivia', checkMaintenance, (_req, res) => {
+  const corsHeaders = { 'Access-Control-Allow-Origin': '*' };
+  
+  const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000);
+
+  const quizBank = [
+    [ // Set 1
+      { q: "Which country has won the most FIFA World Cups?", options: ["Brazil", "Germany", "Italy", "Argentina"], a: "Brazil", exp: "Brazil has won the World Cup 5 times (1958, 1962, 1970, 1994, 2002)." },
+      { q: "Who is the all-time top scorer in World Cup history?", options: ["Pele", "Miroslav Klose", "Ronaldo", "Messi"], a: "Miroslav Klose", exp: "Germany's Miroslav Klose scored 16 goals across 4 World Cup tournaments." },
+      { q: "Which nation will host the 2026 World Cup Final?", options: ["USA", "Canada", "Mexico", "Brazil"], a: "USA", exp: "The 2026 Final will be held at MetLife Stadium in New Jersey, USA." }
+    ],
+    [ // Set 2
+      { q: "Who won the Golden Boot at the 2022 World Cup?", options: ["Lionel Messi", "Kylian Mbappe", "Julian Alvarez", "Olivier Giroud"], a: "Kylian Mbappe", exp: "Mbappe won the Golden Boot with 8 goals, including a hat-trick in the final." },
+      { q: "Which of these countries has NEVER won a World Cup?", options: ["Spain", "England", "Netherlands", "Uruguay"], a: "Netherlands", exp: "The Netherlands have reached the final 3 times but never won the tournament." },
+      { q: "How many teams will compete in the 2026 World Cup?", options: ["32", "40", "48", "64"], a: "48", exp: "2026 marks the first time the tournament expands from 32 to 48 teams." }
+    ],
+    [ // Set 3
+      { q: "Who is the youngest player to score in a World Cup?", options: ["Pele", "Kylian Mbappe", "Michael Owen", "Lionel Messi"], a: "Pele", exp: "Pele scored his first World Cup goal in 1958 at just 17 years and 239 days old." },
+      { q: "Which host country won the World Cup on home soil in 1998?", options: ["Italy", "France", "Brazil", "Germany"], a: "France", exp: "France won their first World Cup in 1998 by defeating Brazil 3-0 in Paris." },
+      { q: "What is the official name of the World Cup trophy introduced in 1974?", options: ["Jules Rimet Trophy", "FIFA World Cup Trophy", "Global Cup", "Champion's Gold"], a: "FIFA World Cup Trophy", exp: "It replaced the Jules Rimet Trophy, which was permanently given to Brazil in 1970." }
+    ]
+  ];
+
+  const todaysQuiz = quizBank[dayOfYear % quizBank.length];
+
+  res.status(200).set(corsHeaders).json({ 
+    date: new Date().toISOString().split('T')[0], 
+    questions: todaysQuiz 
+  });
+});
+
 let predictionCache: { [matchId: string]: { data: any; timestamp: number; scoreHash: string } } = {};
 const PREDICT_CACHE_DURATION = 3 * 60 * 1000;
 
@@ -812,7 +844,6 @@ app.options('/api/predict', (req, res) => {
   res.status(204).set(corsHeaders).end();
 });
 
-// ✅ GOOGLE GEMINI AI ACTIVATED
 app.post('/api/predict', checkMaintenance, async (req, res) => {
   const corsHeaders = { 
     'Access-Control-Allow-Origin': '*',
