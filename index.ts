@@ -913,6 +913,79 @@ Return ONLY valid JSON (no markdown):
   }
 });
 
+// --- 🎲 DYNAMIC AI PLAYER PROPS ENDPOINT ---
+let propsCache: { data: any; timestamp: number } | null = null;
+const PROPS_CACHE_DURATION = 4 * 60 * 60 * 1000; // Cache for 4 hours to save API limits
+
+app.get('/api/player-props', checkMaintenance, async (_req, res) => {
+  const corsHeaders = { 'Access-Control-Allow-Origin': '*' };
+
+  try {
+    const now = Date.now();
+    // Return cached props if they are fresh
+    if (propsCache && (now - propsCache.timestamp < PROPS_CACHE_DURATION)) {
+      return res.status(200).set(corsHeaders).json(propsCache.data);
+    }
+
+    const geminiClients = getGeminiClients();
+    let lastError = null;
+    const modelsToTry = ["gemini-2.5-flash", "gemini-3.1-flash-lite"];
+
+    for (const aiClient of geminiClients) {
+      for (const modelName of modelsToTry) {
+        try {
+          const prompt = `Act as an expert football data analyst. Generate 3 exciting, highly analytical 'Player Props' (betting/fantasy projections) for today's biggest global football players (e.g., Haaland, Mbappe, Bellingham, Vinicius Jr).
+          
+Return ONLY a valid JSON array of 3 objects with this exact structure (no markdown, no backticks):
+[
+  {
+    "player": "Player Name",
+    "team": "3-letter team code (e.g., ENG, RMA, MCI)",
+    "type": "Prop type (e.g., Shots on Target, Anytime Goalscorer, Player Assists)",
+    "line": "e.g., Over 1.5 SOT",
+    "odds": "e.g., 2.10",
+    "probability": Number between 10 and 90,
+    "analysis": "2 sentences explaining the tactical reason behind this prop.",
+    "edge": "High Value, Banker, or Risky",
+    "color": "emerald for Banker/High Value, blue for safe, red for Risky"
+  }
+]`;
+
+          const response = await aiClient.models.generateContent({
+            model: modelName,
+            contents: prompt,
+            config: { temperature: 0.8, responseMimeType: "application/json" }
+          });
+
+          let cleanedJsonStr = (response.text || "").trim();
+          if (cleanedJsonStr.startsWith('```json')) cleanedJsonStr = cleanedJsonStr.replace(/^```json\n/, '').replace(/\n```$/, '');
+          else if (cleanedJsonStr.startsWith('```')) cleanedJsonStr = cleanedJsonStr.replace(/^```\n/, '').replace(/\n```$/, '');
+
+          const generatedProps = JSON.parse(cleanedJsonStr);
+          
+          // Save to cache
+          propsCache = { data: generatedProps, timestamp: now };
+
+          return res.status(200).set(corsHeaders).json(generatedProps);
+        } catch (error: any) {
+          console.warn(`Props Model ${modelName} failed:`, error.message);
+          lastError = error;
+        }
+      }
+    }
+    throw lastError || new Error("All Gemini API keys and models failed for Props.");
+
+  } catch (error: any) {
+    console.error('Player Props Gen Error:', error.message);
+    
+    // Fallback to static data if API completely fails
+    const fallbackProps = [
+        { player: "Erling Haaland", team: "NOR", type: "Shots on Target", line: "Over 1.5 SOT", odds: "1.50", probability: 85, analysis: "AI models offline. Fallback data loaded.", edge: "Banker", color: "blue" }
+    ];
+    res.status(200).set(corsHeaders).json(fallbackProps);
+  }
+});
+
 // --- PUSH NOTIFICATION LOGIC ---
 const sendFirebaseTopicNotification = async (topic: string, title: string, body: string) => {
   if (!isFirebaseInitialized) {
