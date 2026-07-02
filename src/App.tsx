@@ -90,6 +90,13 @@ function App() {
   const [sportName, setSportName] = useState('Football');
   const [alerts, setAlerts] = useState<any[]>([]);
 
+  const [showAll, setShowAll] = useState({
+    LIVE: false,
+    UPCOMING: false,
+    FINISHED: false,
+  });
+  const INITIAL_MATCH_DISPLAY_LIMIT = 10;
+
   const previousMatchesRef = useRef<Match[]>([]);
   const lastFetchTimeRef = useRef(0);
   const lastDbFetchTimeRef = useRef(0);
@@ -580,6 +587,15 @@ function App() {
 
   const path = window.location.pathname;
 
+  const isExpandableTab = activeTab === 'LIVE' || activeTab === 'UPCOMING' || activeTab === 'FINISHED';
+  const canShowMore = isExpandableTab && sortedFilteredMatches.length > INITIAL_MATCH_DISPLAY_LIMIT;
+  const shouldShowMoreButton = canShowMore && !showAll[activeTab as 'LIVE' | 'UPCOMING' | 'FINISHED'];
+
+  const matchesToDisplay = shouldShowMoreButton
+    ? sortedFilteredMatches.slice(0, INITIAL_MATCH_DISPLAY_LIMIT)
+    : sortedFilteredMatches;
+
+
   if (path === '/login') {
     return <LoginPage />;
   }
@@ -735,12 +751,12 @@ function App() {
                     </div>
                   )}
 
-                  {sortedFilteredMatches.length === 0 ? (
+                  {matchesToDisplay.length === 0 ? (
                     <div className="text-xs text-slate-500 text-center p-8 bg-[#0B1121] rounded-xl border border-white/5 flex flex-col items-center gap-2">
                       <span className="text-2xl">⚽</span><span className="font-bold">No matches here yet.</span>
                     </div>
                   ) : (
-                    sortedFilteredMatches.map((match, index) => (
+                    matchesToDisplay.map((match, index) => (
                       <div key={match.id} className="animate-fade-in-up" style={{ animationDelay: `${index * 50}ms` }}>
                         <MatchCard
                           match={match}
@@ -761,6 +777,17 @@ function App() {
                       </div>
                     ))
                   )}
+                  {shouldShowMoreButton && (
+                    <div className="mt-2 animate-fade-in-up">
+                      <button
+                        onClick={() => setShowAll(prev => ({ ...prev, [activeTab]: true }))}
+                        className="w-full text-center py-3 bg-indigo-600/20 text-indigo-300 text-xs font-bold uppercase tracking-wider rounded-xl hover:bg-indigo-600/40 transition-colors"
+                      >
+                        Show More ({sortedFilteredMatches.length - INITIAL_MATCH_DISPLAY_LIMIT} more)
+                      </button>
+                    </div>
+                  )}
+
                 </>
               ) : (
                 // Safe mapping using the dynamic `teams` state

@@ -386,8 +386,9 @@ app.get('/api/db-matches', checkMaintenance, async (_req, res) => {
       return {
         id: row.id,
         competition: row.competition || 'FIFA World Cup 2026',
+        status: isFinished ? 'FINISHED' : 'SCHEDULED',
         dbStatus: isFinished ? 'FINISHED' : 'SCHEDULED',
-        time: displayTime || 'TBD',
+        time: isFinished ? 'FT' : (displayTime || 'TBD'),
         date: new Date(row.match_date).toISOString().split('T')[0],
         youtubeHighlightId: ytId || null,
         homeTeam: {
@@ -534,9 +535,13 @@ app.get('/api/live-matches', checkMaintenance, async (_req, res) => {
       const data = await response.json();
 
       let liveOrFinishedMatches = [];
-      // IMPROVEMENT: If the live endpoint returns data, take all matches.
+      // The API response structure can vary. Check for an 'events' property first,
+      // but if it's not there, check if the root response is the array of matches.
       if (data && data.events && Array.isArray(data.events)) {
         liveOrFinishedMatches = data.events;
+      } else if (Array.isArray(data)) {
+        // Fallback for when the API returns a direct array of matches
+        liveOrFinishedMatches = data;
       }
 
       const formattedLiveMatches = liveOrFinishedMatches.map((m: any) => {
@@ -609,8 +614,8 @@ app.get('/api/standings', async (req, res) => {
     }
 
     console.log(`Fetching External Standings from new API for League: ${leagueId}...`);
-    const apiKey = process.env.RAPID_API_KEY_STANDINGS;
-    if (!apiKey) throw new Error('RAPID_API_KEY_STANDINGS is missing.');
+    const apiKey = process.env.RAPID_API_KEY_2; // Use the key named in Vercel
+    if (!apiKey) throw new Error('RAPID_API_KEY_2 (for standings) is missing.');
 
     const url = `https://free-api-live-football-data.p.rapidapi.com/football-get-standing-all?leagueid=${leagueId}`;
     const response = await fetch(url, {
@@ -675,8 +680,8 @@ app.get('/api/upcoming-matches', checkMaintenance, async (_req, res) => {
     }
 
     console.log('Fetching new Upcoming Matches from API...');
-    const apiKey = process.env.RAPID_API_KEY_UPCOMING;
-    if (!apiKey) throw new Error('RAPID_API_KEY_UPCOMING is missing.');
+    const apiKey = process.env.RAPID_API_KEY_3; // Use the key named in Vercel
+    if (!apiKey) throw new Error('RAPID_API_KEY_3 (for upcoming) is missing.');
 
     const url = 'https://whoscored-football-data-api.p.rapidapi.com/api/v1/matches/upcoming';
     const response = await fetch(url, {
