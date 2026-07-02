@@ -41,6 +41,34 @@ function normalizeTeamName(name: string): string {
   return normalized.replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
 }
 
+// Define major tournaments with their API IDs for fetching dynamic standings
+const majorTournaments: Record<string, { tournamentId: string; seasonId: string } | null> = {
+  'Premier League': { tournamentId: '17', seasonId: '52186' }, // 2023/2024
+  'La Liga': { tournamentId: '8', seasonId: '52376' },       // 2023/2024
+  'UEFA Champions League': { tournamentId: '7', seasonId: '52162' }, // 2023/2024
+  'FIFA World Cup 2026': null, // This will use the static data as a fallback
+};
+
+/**
+ * Processes a flat list of teams from the API into groups for the UI.
+ * @param standingsData - The flat array of team standings.
+ * @returns An array of group objects, structured for the StandingsGrid component.
+ */
+const processFetchedStandings = (standingsData: any[]) => {
+  if (!standingsData || standingsData.length === 0) return [];
+
+  const groups: Record<string, { groupName: string, entries: any[] }> = {};
+  standingsData.forEach(team => {
+    const groupName = team.group || 'League Table';
+    if (!groups[groupName]) {
+      groups[groupName] = { groupName, entries: [] };
+    }
+    groups[groupName].entries.push(team);
+  });
+
+  return Object.values(groups);
+};
+
 function App() {
   const [matches, setMatches] = useState<Match[]>([]);
   // Start with an empty array for teams, we will fetch it from the backend
@@ -69,6 +97,7 @@ function App() {
   const combinedMatchesRef = useRef<Match[]>([]);
   const highlightMatchIdsRef = useRef<Set<string>>(new Set());
   const initialLoadCompleteRef = useRef<boolean>(false);
+  const standingsLoadedRef = useRef<boolean>(false);
 
   const initialFinishedMatches = () => {
     try {
@@ -168,6 +197,44 @@ function App() {
 
     checkInitialStatus();
   }, []);
+
+  // Fetch standings from the backend when the Standings tab is active
+  useEffect(() => {
+    const fetchAllStandings = async () => {
+      // Only fetch when the standings tab is active AND they haven't been loaded yet.
+      if (activeTab !== 'STANDINGS' || standingsLoadedRef.current) return;
+
+      const standingsPromises = Object.entries(majorTournaments)
+        .filter(([, ids]) => ids !== null) // Exclude tournaments without API IDs
+        .map(async ([name, ids]) => {
+          try {
+            const res = await fetch(`/api/standings?tournamentId=${ids!.tournamentId}&seasonId=${ids!.seasonId}`);
+            if (!res.ok) return [name, []];
+            const data = await res.json();
+            return [name, processFetchedStandings(data.standings)];
+          } catch (error) {
+            console.error(`Failed to fetch standings for ${name}:`, error);
+            return [name, []];
+          }
+        });
+
+      const results = await Promise.all(standingsPromises);
+      const newStandings: Record<string, any> = {
+        'FIFA World Cup 2026': WORLD_CUP_STANDINGS, // Always include the static WC data
+      };
+
+      results.forEach(([name, data]) => {
+        if (data && (data as any[]).length > 0) {
+          newStandings[name as string] = data;
+        }
+      });
+      
+      setDynamicStandings(newStandings);
+      standingsLoadedRef.current = true; // Mark as loaded to prevent re-fetching
+    };
+
+    fetchAllStandings();
+  }, [activeTab]); // Reruns only when user navigates to the standings tab
 
   const setMaintenanceMode = async (enabled: boolean) => {
     const password = prompt('Please enter the admin password to change maintenance mode:');
@@ -417,109 +484,6 @@ function App() {
 
         newHighlightMatches.forEach(m => highlightMatchIdsRef.current.add(m.id));
         initialLoadCompleteRef.current = true;
-
-        let newDynamicStandings: Record<string, any[]> = {
-          'FIFA World Cup 2026': JSON.parse(JSON.stringify(WORLD_CUP_STANDINGS))
-        };
-
-        const processedForStandings = new Set<string>();
-
-        const normalizeCompetitionName = (compName: string) => {
-          const name = String(compName || '').trim();
-          const lower = name.toLowerCase();
-          if (lower.includes('world cup')) return 'FIFA World Cup 2026';
-          if (lower.includes('champions league')) return 'UEFA Champions League';
-          if (lower.includes('euros') || lower.includes('european championship')) return 'UEFA European Championship';
-          return name || 'Other Competitions';
-        };
-
-        const isFinishedOrLiveMatch = (m: Match) => {
-          const s = String(m.status).toUpperCase();
-          return s === 'FINISHED' || s === 'FT' || s === 'ENDED' || s === 'CLOSED' || s === 'LIVE';
-        };
-
-        const validMatchesToCalculate = combinedMatches.filter((m: Match) => {
-          return isFinishedOrLiveMatch(m) &&
-            m.homeScore !== undefined && m.homeScore !== null &&
-            m.awayScore !== undefined && m.awayScore !== null;
-        });
-
-        validMatchesToCalculate.forEach((m: Match) => {
-          const matchIdStr = String(m.id);
-          if (!matchIdStr || processedForStandings.has(matchIdStr)) {
-            return;
-          }
-          processedForStandings.add(matchIdStr);
-
-          const comp = normalizeCompetitionName(m.competition || 'Other Competitions');
-
-          if (!newDynamicStandings[comp]) {
-            newDynamicStandings[comp] = [{ groupName: 'League Table', entries: [] }];
-          }
-
-          const homeScore = Number(m.homeScore) || 0;
-          const awayScore = Number(m.awayScore) || 0;
-
-          const homeNameStr = typeof m.homeTeam === 'object' ? (m.homeTeam?.name || 'Home') : String(m.homeTeam || 'Home');
-          const awayNameStr = typeof m.awayTeam === 'object' ? (m.awayTeam?.name || 'Away') : String(m.awayTeam || 'Away');
-          const homeCode = typeof m.homeTeam === 'object' ? m.homeTeam?.code : homeNameStr.substring(0, 3).toUpperCase();
-          const awayCode = typeof m.awayTeam === 'object' ? m.awayTeam?.code : awayNameStr.substring(0, 3).toUpperCase();
-          const homeLogo = typeof m.homeTeam === 'object' ? m.homeTeam?.logo : '⚽';
-          const awayLogo = typeof m.awayTeam === 'object' ? m.awayTeam?.logo : '⚽';
-
-          const findOrCreateTeam = (teamName: string, code: string, logo: string) => {
-            const normalizedNameToFind = normalizeTeamName(teamName);
-            let foundTeam: any = null;
-            newDynamicStandings[comp].forEach((group: any) => {
-              const t = group.entries.find((e: any) => {
-                const normalizedExistingName = normalizeTeamName(e.teamName);
-                return (normalizedExistingName === normalizedNameToFind) ||
-                  (e.code && code && e.code.toLowerCase() === code.toLowerCase() && comp !== 'FIFA World Cup 2026');
-              });
-              if (t) foundTeam = t;
-            });
-            if (!foundTeam) {
-              if (comp === 'FIFA World Cup 2026') {
-                return null;
-              }
-              foundTeam = { rank: 0, teamName, code: code || 'UNK', logo: logo || '⚽', played: 0, win: 0, draw: 0, lose: 0, goalsFor: 0, goalsAgainst: 0, gd: 0, points: 0 };
-              newDynamicStandings[comp][0].entries.push(foundTeam);
-            }
-            return foundTeam;
-          };
-
-          const hTeam = findOrCreateTeam(homeNameStr, homeCode, homeLogo);
-          const aTeam = findOrCreateTeam(awayNameStr, awayCode, awayLogo);
-
-          if (!hTeam || !aTeam) {
-            return;
-          }
-
-          hTeam.played = (hTeam.played || 0) + 1;
-          hTeam.goalsFor = (hTeam.goalsFor || 0) + homeScore;
-          hTeam.goalsAgainst = (hTeam.goalsAgainst || 0) + awayScore;
-          if (homeScore > awayScore) { hTeam.win = (hTeam.win || 0) + 1; hTeam.points = (hTeam.points || 0) + 3; aTeam.lose = (aTeam.lose || 0) + 1; }
-          else if (homeScore < awayScore) { aTeam.win = (aTeam.win || 0) + 1; aTeam.points = (aTeam.points || 0) + 3; hTeam.lose = (hTeam.lose || 0) + 1; }
-          else { hTeam.draw = (hTeam.draw || 0) + 1; hTeam.points = (hTeam.points || 0) + 1; aTeam.draw = (aTeam.draw || 0) + 1; aTeam.points = (aTeam.points || 0) + 1; }
-          hTeam.gd = (hTeam.goalsFor || 0) - (hTeam.goalsAgainst || 0);
-          aTeam.gd = (aTeam.goalsFor || 0) - (aTeam.goalsAgainst || 0);
-        });
-
-        Object.keys(newDynamicStandings).forEach(comp => {
-          newDynamicStandings[comp].forEach((group: any) => {
-            group.entries.sort((a: any, b: any) => {
-              if (b.points !== a.points) return b.points - a.points;
-              return Number(b.gd) - Number(a.gd);
-            });
-            group.entries.forEach((team: any, idx: number) => {
-              team.rank = idx + 1;
-              const validGd = Number(team.gd) || 0;
-              team.gd = validGd > 0 ? `+${validGd}` : `${validGd}`;
-            });
-          });
-        });
-
-        setDynamicStandings(newDynamicStandings);
 
         const newAlerts: any[] = [];
         liveMatches.forEach((newMatch: any) => {

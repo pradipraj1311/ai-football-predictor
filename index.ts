@@ -72,21 +72,21 @@ const checkMaintenance = async (_req: express.Request, res: express.Response, ne
 };
 
 const minorLeagueFallback = [
-    {
-        id: 'dummy-live-test',
-        competition: 'E2match Demo League',
-        status: 'LIVE',
-        minute: 78,
-        time: "78'",
-        date: new Date().toISOString(),
-        homeScore: 1,
-        awayScore: 1,
-        homeTeam: { id: 't_dummy_1', name: 'Red Dragons', code: 'RED', logo: '🐉' },
-        awayTeam: { id: 't_dummy_2', name: 'Blue Knights', code: 'BLU', logo: '⚔️' },
-        stats: { possession: { home: 55, away: 45 }, shots: { home: 12, away: 9 }, shotsOnTarget: { home: 5, away: 4 }, fouls: { home: 8, away: 11 }, yellowCards: { home: 1, away: 2 }, redCards: { home: 0, away: 0 }, corners: { home: 6, away: 3 } },
-        events: [],
-        h2h: { matchesPlayed: 2, homeWins: 1, awayWins: 0, draws: 1, lastResults: ['W', 'D'] }
-    }
+  {
+    id: 'dummy-live-test',
+    competition: 'E2match Demo League',
+    status: 'LIVE',
+    minute: 78,
+    time: "78'",
+    date: new Date().toISOString(),
+    homeScore: 1,
+    awayScore: 1,
+    homeTeam: { id: 't_dummy_1', name: 'Red Dragons', code: 'RED', logo: '🐉' },
+    awayTeam: { id: 't_dummy_2', name: 'Blue Knights', code: 'BLU', logo: '⚔️' },
+    stats: { possession: { home: 55, away: 45 }, shots: { home: 12, away: 9 }, shotsOnTarget: { home: 5, away: 4 }, fouls: { home: 8, away: 11 }, yellowCards: { home: 1, away: 2 }, redCards: { home: 0, away: 0 }, corners: { home: 6, away: 3 } },
+    events: [],
+    h2h: { matchesPlayed: 2, homeWins: 1, awayWins: 0, draws: 1, lastResults: ['W', 'D'] }
+  }
 ];
 
 const checkAdminPassword = (req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -182,7 +182,7 @@ let sofa429Count = 0;
 let currentSofaKeyIndex = 0;
 const SOFA_MAX_BACKOFF = 10 * 60 * 1000;
 const SOFA_BACKOFF_JITTER = 0.25;
-const SOFA_MIN_INTERVAL = 60 * 1000;
+const SOFA_MIN_INTERVAL = 90 * 1000; // Adjusted to 90s for a balance of responsiveness and API quota safety
 
 const teamNameAliases: { [key: string]: string } = {
   'dr congo': 'congo dr',
@@ -207,59 +207,59 @@ function normalizeTeamName(name: string): string {
 }
 
 function transformMatchRow(row: any, status: 'UPCOMING' | 'FINISHED' | 'SCHEDULED'): any {
-    const homeTeamName = typeof row.home_team === 'string' ? row.home_team : row.home_team?.name || 'Home';
-    const awayTeamName = typeof row.away_team === 'string' ? row.away_team : row.away_team?.name || 'Away';
+  const homeTeamName = typeof row.home_team === 'string' ? row.home_team : row.home_team?.name || 'Home';
+  const awayTeamName = typeof row.away_team === 'string' ? row.away_team : row.away_team?.name || 'Away';
 
-    let displayTime = row.match_time;
-    if (typeof displayTime === 'string' && displayTime.match(/^\d{2}:\d{2}(:\d{2})?$/)) {
-        displayTime = displayTime.substring(0, 5);
-    }
+  let displayTime = row.match_time;
+  if (typeof displayTime === 'string' && displayTime.match(/^\d{2}:\d{2}(:\d{2})?$/)) {
+    displayTime = displayTime.substring(0, 5);
+  }
 
-    let homeForm: string[] = [];
-    try {
-        homeForm = row.home_team_form ? JSON.parse(row.home_team_form) : ['W', 'D', 'W', 'L', 'W'];
-    } catch (e) {
-        homeForm = ['W', 'D', 'W', 'L', 'W'];
-    }
+  let homeForm: string[] = [];
+  try {
+    homeForm = row.home_team_form ? JSON.parse(row.home_team_form) : ['W', 'D', 'W', 'L', 'W'];
+  } catch (e) {
+    homeForm = ['W', 'D', 'W', 'L', 'W'];
+  }
 
-    let awayForm: string[] = [];
-    try {
-        awayForm = row.away_team_form ? JSON.parse(row.away_team_form) : ['D', 'W', 'L', 'W', 'D'];
-    } catch (e) {
-        awayForm = ['D', 'W', 'L', 'W', 'D'];
-    }
+  let awayForm: string[] = [];
+  try {
+    awayForm = row.away_team_form ? JSON.parse(row.away_team_form) : ['D', 'W', 'L', 'W', 'D'];
+  } catch (e) {
+    awayForm = ['D', 'W', 'L', 'W', 'D'];
+  }
 
-    return {
-        id: row.id,
-        competition: row.competition || 'FIFA World Cup 2026',
-        status: status,
-        dbStatus: row.db_status || status,
-        time: status === 'FINISHED' ? 'FT' : (displayTime || 'TBD'),
-        date: new Date(row.match_date).toISOString().split('T')[0],
-        youtubeHighlightId: row.youtube_highlight_id || null,
-        homeTeam: {
-            id: row.home_team_id || homeTeamName.toLowerCase().replace(/\s/g, '-'),
-            name: homeTeamName,
-            code: row.home_team_code || homeTeamName.substring(0, 3).toUpperCase(),
-            logo: row.home_team_logo || '⚽',
-            form: homeForm
-        },
-        awayTeam: {
-            id: row.away_team_id || awayTeamName.toLowerCase().replace(/\s/g, '-'),
-            name: awayTeamName,
-            code: row.away_team_code || awayTeamName.substring(0, 3).toUpperCase(),
-            logo: row.away_team_logo || '⚽',
-            form: awayForm
-        },
-        homeScore: row.home_score ?? 0,
-        awayScore: row.away_score ?? 0,
-        stats: {
-            possession: { home: 50, away: 50 }, shots: { home: 10, away: 8 }, shotsOnTarget: { home: 4, away: 3 },
-            fouls: { home: 10, away: 12 }, yellowCards: { home: 1, away: 2 }, redCards: { home: 0, away: 0 }, corners: { home: 5, away: 4 }
-        },
-        events: [],
-        h2h: { matchesPlayed: 5, homeWins: 2, awayWins: 1, draws: 2, lastResults: ['W', 'D', 'L', 'W', 'D'] }
-    };
+  return {
+    id: row.id,
+    competition: row.competition || 'FIFA World Cup 2026',
+    status: status,
+    dbStatus: row.db_status || status,
+    time: status === 'FINISHED' ? 'FT' : (displayTime || 'TBD'),
+    date: new Date(row.match_date).toISOString().split('T')[0],
+    youtubeHighlightId: row.youtube_highlight_id || null,
+    homeTeam: {
+      id: row.home_team_id || homeTeamName.toLowerCase().replace(/\s/g, '-'),
+      name: homeTeamName,
+      code: row.home_team_code || homeTeamName.substring(0, 3).toUpperCase(),
+      logo: row.home_team_logo || '⚽',
+      form: homeForm
+    },
+    awayTeam: {
+      id: row.away_team_id || awayTeamName.toLowerCase().replace(/\s/g, '-'),
+      name: awayTeamName,
+      code: row.away_team_code || awayTeamName.substring(0, 3).toUpperCase(),
+      logo: row.away_team_logo || '⚽',
+      form: awayForm
+    },
+    homeScore: row.home_score ?? 0,
+    awayScore: row.away_score ?? 0,
+    stats: {
+      possession: { home: 50, away: 50 }, shots: { home: 10, away: 8 }, shotsOnTarget: { home: 4, away: 3 },
+      fouls: { home: 10, away: 12 }, yellowCards: { home: 1, away: 2 }, redCards: { home: 0, away: 0 }, corners: { home: 5, away: 4 }
+    },
+    events: [],
+    h2h: { matchesPlayed: 5, homeWins: 2, awayWins: 1, draws: 2, lastResults: ['W', 'D', 'L', 'W', 'D'] }
+  };
 }
 
 app.use('/api', (req, res, next) => {
@@ -536,7 +536,7 @@ app.get('/api/live-matches', checkMaintenance, async (_req, res) => {
       let liveOrFinishedMatches = [];
       // IMPROVEMENT: If the live endpoint returns data, take all matches.
       if (data && data.events && Array.isArray(data.events)) {
-        liveOrFinishedMatches = data.events; 
+        liveOrFinishedMatches = data.events;
       }
 
       const formattedLiveMatches = liveOrFinishedMatches.map((m: any) => {
@@ -566,7 +566,7 @@ app.get('/api/live-matches', checkMaintenance, async (_req, res) => {
 
       matchCache = { data: finalMatches, timestamp: now };
       await setCache(redisKey, matchCache.data, Math.ceil(LIVE_CACHE_DURATION / 1000));
-      
+
       checkGoalsAndNotify(finalMatches);
 
       if (!responseSent) {
@@ -606,19 +606,31 @@ app.get('/api/standings', async (req, res) => {
     }
 
     console.log(`Fetching External Standings from RapidAPI for Tournament: ${tournamentId}...`);
-    const keys = (process.env.RAPID_API_KEY || '').split(',').map(k => k.trim()).filter(Boolean);
-    if (keys.length === 0) throw new Error('RAPID_API_KEY missing');
+    const rawKeys = process.env.RAPID_API_KEY;
+    if (!rawKeys) throw new Error('RAPID_API_KEY is missing.');
+    const keys = rawKeys.split(',').map(k => k.trim()).filter(Boolean);
+    if (keys.length === 0) throw new Error('No valid RapidAPI keys found.');
+
+    if (currentSofaKeyIndex >= keys.length) {
+      currentSofaKeyIndex = 0;
+    }
+    const apiKey = keys[currentSofaKeyIndex];
+    console.log(`[Standings] Using RapidAPI Key index: ${currentSofaKeyIndex}`);
 
     const url = `https://sofascore6.p.rapidapi.com/api/sofascore/v1/tournament/${tournamentId}/season/${seasonId}/standings`;
     const response = await fetch(url, {
       headers: {
-        'X-RapidAPI-Key': keys[0],
+        'X-RapidAPI-Key': apiKey,
         'X-RapidAPI-Host': 'sofascore6.p.rapidapi.com'
       }
     });
 
     if (!response.ok) {
-      if (response.status === 429) throw new Error('RapidAPI Rate Limit Exceeded');
+      if (response.status === 429) {
+        currentSofaKeyIndex = (currentSofaKeyIndex + 1) % keys.length;
+        console.warn(`[429] Standings fetch rate limited. Switched to key index ${currentSofaKeyIndex} for next request.`);
+        throw new Error('RapidAPI Rate Limit Exceeded');
+      }
       throw new Error(`API returned ${response.status}`);
     }
 
@@ -650,7 +662,7 @@ app.get('/api/standings', async (req, res) => {
     }
 
     if (formattedStandings.length > 0) {
-      await setCache(cacheKey, { data: formattedStandings }, 43200);
+      await setCache(cacheKey, { data: formattedStandings }, 14400); // Cache for 4 hours
     }
 
     res.status(200).set(corsHeaders).json({ standings: formattedStandings, cached: false });
@@ -661,77 +673,77 @@ app.get('/api/standings', async (req, res) => {
 });
 
 app.get('/api/upcoming-matches', checkMaintenance, async (_req, res) => {
-    const corsHeaders = {
-        'Access-Control-Allow-Origin': '*',
-        'Content-Type': 'application/json',
-        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600'
-    };
-    if (!process.env.DB_URL) {
-        return res.status(200).set(corsHeaders).json({ matches: [], warning: 'DB not configured' });
-    }
-    try {
-        const client = await pool.connect();
-        const result = await client.query(
-            `SELECT * FROM world_cup_matches 
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Content-Type': 'application/json',
+    'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600'
+  };
+  if (!process.env.DB_URL) {
+    return res.status(200).set(corsHeaders).json({ matches: [], warning: 'DB not configured' });
+  }
+  try {
+    const client = await pool.connect();
+    const result = await client.query(
+      `SELECT * FROM world_cup_matches 
                  WHERE match_date >= NOW() 
                  ORDER BY match_date ASC 
                  LIMIT 20`
-        );
-        client.release();
+    );
+    client.release();
 
-        const matches = result.rows.map(row => transformMatchRow(row, 'UPCOMING'));
-        res.status(200).set(corsHeaders).json({
-            matches,
-            count: result.rows.length
-        });
-    } catch (error: any) {
-        console.error('Upcoming matches error:', error.message);
-        res.status(200).set(corsHeaders).json({
-            matches: [],
-            warning: 'Could not fetch upcoming matches'
-        });
-    }
+    const matches = result.rows.map(row => transformMatchRow(row, 'UPCOMING'));
+    res.status(200).set(corsHeaders).json({
+      matches,
+      count: result.rows.length
+    });
+  } catch (error: any) {
+    console.error('Upcoming matches error:', error.message);
+    res.status(200).set(corsHeaders).json({
+      matches: [],
+      warning: 'Could not fetch upcoming matches'
+    });
+  }
 });
 
 app.get('/api/completed-matches', checkMaintenance, async (_req, res) => {
-    const corsHeaders = {
-        'Access-Control-Allow-Origin': '*',
-        'Content-Type': 'application/json',
-        'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=3600'
-    };
-    if (!process.env.DB_URL) {
-        return res.status(200).set(corsHeaders).json({ matches: [], warning: 'DB not configured' });
-    }
-    try {
-        const client = await pool.connect();
-        const result = await client.query(
-            `SELECT * FROM world_cup_matches 
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Content-Type': 'application/json',
+    'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=3600'
+  };
+  if (!process.env.DB_URL) {
+    return res.status(200).set(corsHeaders).json({ matches: [], warning: 'DB not configured' });
+  }
+  try {
+    const client = await pool.connect();
+    const result = await client.query(
+      `SELECT * FROM world_cup_matches 
                  WHERE db_status = 'FINISHED' 
                  ORDER BY match_date DESC 
                  LIMIT 20`
-        );
-        client.release();
+    );
+    client.release();
 
-        const matches = await Promise.all(result.rows.map(async (row) => {
-            const transformed = transformMatchRow(row, 'FINISHED');
-            if (!transformed.youtubeHighlightId && process.env.YOUTUBE_API_KEY) {
-                const ytId = await fetchAndSaveHighlight(row.id, transformed.homeTeam.name, transformed.awayTeam.name);
-                if (ytId) transformed.youtubeHighlightId = ytId;
-            }
-            return transformed;
-        }));
+    const matches = await Promise.all(result.rows.map(async (row) => {
+      const transformed = transformMatchRow(row, 'FINISHED');
+      if (!transformed.youtubeHighlightId && process.env.YOUTUBE_API_KEY) {
+        const ytId = await fetchAndSaveHighlight(row.id, transformed.homeTeam.name, transformed.awayTeam.name);
+        if (ytId) transformed.youtubeHighlightId = ytId;
+      }
+      return transformed;
+    }));
 
-        res.status(200).set(corsHeaders).json({
-            matches,
-            count: result.rows.length
-        });
-    } catch (error: any) {
-        console.error('Completed matches error:', error.message);
-        res.status(200).set(corsHeaders).json({
-            matches: [],
-            warning: 'Could not fetch completed matches'
-        });
-    }
+    res.status(200).set(corsHeaders).json({
+      matches,
+      count: result.rows.length
+    });
+  } catch (error: any) {
+    console.error('Completed matches error:', error.message);
+    res.status(200).set(corsHeaders).json({
+      matches: [],
+      warning: 'Could not fetch completed matches'
+    });
+  }
 });
 
 app.post('/api/login', (req, res) => {
@@ -803,7 +815,7 @@ app.post('/api/poll/vote', checkMaintenance, async (req, res) => {
 // ---  DAILY TRIVIA QUIZ ENDPOINT ---
 app.get('/api/trivia', checkMaintenance, (_req, res) => {
   const corsHeaders = { 'Access-Control-Allow-Origin': '*' };
-  
+
   const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000);
 
   const quizBank = [
@@ -826,17 +838,17 @@ app.get('/api/trivia', checkMaintenance, (_req, res) => {
 
   const todaysQuiz = quizBank[dayOfYear % quizBank.length];
 
-  res.status(200).set(corsHeaders).json({ 
-    date: new Date().toISOString().split('T')[0], 
-    questions: todaysQuiz 
+  res.status(200).set(corsHeaders).json({
+    date: new Date().toISOString().split('T')[0],
+    questions: todaysQuiz
   });
 });
 
 let predictionCache: { [matchId: string]: { data: any; timestamp: number; scoreHash: string } } = {};
-const PREDICT_CACHE_DURATION = 3 * 60 * 1000;
+const PREDICT_CACHE_DURATION = 10 * 60 * 1000; // Cache for 10 minutes to conserve Gemini API calls
 
 app.options('/api/predict', (req, res) => {
-  const corsHeaders = { 
+  const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type'
@@ -845,7 +857,7 @@ app.options('/api/predict', (req, res) => {
 });
 
 app.post('/api/predict', checkMaintenance, async (req, res) => {
-  const corsHeaders = { 
+  const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type'
@@ -858,7 +870,7 @@ app.post('/api/predict', checkMaintenance, async (req, res) => {
     const currentScoreHash = `${match.homeScore ?? 0}-${match.awayScore ?? 0}`;
     const now = Date.now();
 
-    if (predictionCache[matchId] && (now - predictionCache[matchId].timestamp < 3 * 60 * 1000) && predictionCache[matchId].scoreHash === currentScoreHash) {
+    if (predictionCache[matchId] && (now - predictionCache[matchId].timestamp < PREDICT_CACHE_DURATION) && predictionCache[matchId].scoreHash === currentScoreHash) {
       return res.status(200).set(corsHeaders).json({ prediction: predictionCache[matchId].data, cached: true });
     }
 
@@ -962,7 +974,7 @@ Return ONLY a valid JSON array of 3 objects with this exact structure (no markdo
           else if (cleanedJsonStr.startsWith('```')) cleanedJsonStr = cleanedJsonStr.replace(/^```\n/, '').replace(/\n```$/, '');
 
           const generatedProps = JSON.parse(cleanedJsonStr);
-          
+
           // Save to cache
           propsCache = { data: generatedProps, timestamp: now };
 
@@ -977,10 +989,10 @@ Return ONLY a valid JSON array of 3 objects with this exact structure (no markdo
 
   } catch (error: any) {
     console.error('Player Props Gen Error:', error.message);
-    
+
     // Fallback to static data if API completely fails
     const fallbackProps = [
-        { player: "Erling Haaland", team: "NOR", type: "Shots on Target", line: "Over 1.5 SOT", odds: "1.50", probability: 85, analysis: "AI models offline. Fallback data loaded.", edge: "Banker", color: "blue" }
+      { player: "Erling Haaland", team: "NOR", type: "Shots on Target", line: "Over 1.5 SOT", odds: "1.50", probability: 85, analysis: "AI models offline. Fallback data loaded.", edge: "Banker", color: "blue" }
     ];
     res.status(200).set(corsHeaders).json(fallbackProps);
   }
@@ -1033,50 +1045,50 @@ let previousScoresCache: { [matchId: string]: string } = {};
 const checkGoalsAndNotify = async (liveMatches: any[]) => {
   liveMatches.forEach(match => {
     if (match.status === 'LIVE' && match.homeScore !== undefined && match.awayScore !== undefined) {
-        const matchId = String(match.id);
-        const currentScoreHash = `${match.homeScore}-${match.awayScore}`;
-        const prevScoreHash = previousScoresCache[matchId];
+      const matchId = String(match.id);
+      const currentScoreHash = `${match.homeScore}-${match.awayScore}`;
+      const prevScoreHash = previousScoresCache[matchId];
 
-        if (prevScoreHash && prevScoreHash !== currentScoreHash) {
-            const prevScores = prevScoreHash.split('-');
-            const prevHome = parseInt(prevScores[0]);
-            const prevAway = parseInt(prevScores[1]);
+      if (prevScoreHash && prevScoreHash !== currentScoreHash) {
+        const prevScores = prevScoreHash.split('-');
+        const prevHome = parseInt(prevScores[0]);
+        const prevAway = parseInt(prevScores[1]);
 
-            let goalMessage = '';
-            let scoringTeamName = '';
+        let goalMessage = '';
+        let scoringTeamName = '';
 
-            if (match.homeScore > prevHome) {
-                goalMessage = `⚽ GOAL! ${match.homeTeam.name} scores!`;
-                scoringTeamName = match.homeTeam.name;
-            } else if (match.awayScore > prevAway) {
-                goalMessage = `⚽ GOAL! ${match.awayTeam.name} scores!`;
-                scoringTeamName = match.awayTeam.name;
-            } else {
-                goalMessage = `⚽ SCORE UPDATE!`;
-            }
-
-            const fullMessage = `${match.homeTeam.name} ${match.homeScore} - ${match.awayScore} ${match.awayTeam.name}`;
-
-            // 1. Send specific alert to users following the HOME team
-            if (match.homeTeam.code) {
-                sendFirebaseTopicNotification(`team_${match.homeTeam.code}`, goalMessage, fullMessage);
-            }
-
-            // 2. Send specific alert to users following the AWAY team
-            if (match.awayTeam.code) {
-                sendFirebaseTopicNotification(`team_${match.awayTeam.code}`, goalMessage, fullMessage);
-            }
-
-            // 3. SPAM CONTROL: Only send to 'global_goal_alerts' if it's a massive competition
-            // We filter out minor leagues so users don't get spammed.
-            const premiumCompetitions = ['FIFA World Cup 2026', 'UEFA Champions League', 'Premier League', 'LaLiga'];
-            const isPremiumMatch = premiumCompetitions.some(comp => match.competition.includes(comp));
-
-            if (isPremiumMatch) {
-                sendFirebaseTopicNotification('global_goal_alerts', goalMessage, fullMessage);
-            }
+        if (match.homeScore > prevHome) {
+          goalMessage = `⚽ GOAL! ${match.homeTeam.name} scores!`;
+          scoringTeamName = match.homeTeam.name;
+        } else if (match.awayScore > prevAway) {
+          goalMessage = `⚽ GOAL! ${match.awayTeam.name} scores!`;
+          scoringTeamName = match.awayTeam.name;
+        } else {
+          goalMessage = `⚽ SCORE UPDATE!`;
         }
-        previousScoresCache[matchId] = currentScoreHash;
+
+        const fullMessage = `${match.homeTeam.name} ${match.homeScore} - ${match.awayScore} ${match.awayTeam.name}`;
+
+        // 1. Send specific alert to users following the HOME team
+        if (match.homeTeam.code) {
+          sendFirebaseTopicNotification(`team_${match.homeTeam.code}`, goalMessage, fullMessage);
+        }
+
+        // 2. Send specific alert to users following the AWAY team
+        if (match.awayTeam.code) {
+          sendFirebaseTopicNotification(`team_${match.awayTeam.code}`, goalMessage, fullMessage);
+        }
+
+        // 3. SPAM CONTROL: Only send to 'global_goal_alerts' if it's a massive competition
+        // We filter out minor leagues so users don't get spammed.
+        const premiumCompetitions = ['FIFA World Cup 2026', 'UEFA Champions League', 'Premier League', 'LaLiga'];
+        const isPremiumMatch = premiumCompetitions.some(comp => match.competition.includes(comp));
+
+        if (isPremiumMatch) {
+          sendFirebaseTopicNotification('global_goal_alerts', goalMessage, fullMessage);
+        }
+      }
+      previousScoresCache[matchId] = currentScoreHash;
     }
   });
 };
@@ -1086,35 +1098,35 @@ const checkGoalsAndNotify = async (liveMatches: any[]) => {
 
 const ENGAGEMENT_MESSAGES = [
   {
-    title: "🔮 AI Predictions are Ready!",
-    body: "Our Neural Engine has just calculated the odds for tonight's biggest matches. Tap to see the hidden tactical advantages.",
+    title: "🔮 Today's Predictions Are In",
+    body: "Who has the edge tonight? Our AI breaks down the tactics and key matchups. Get the inside scoop before kickoff.",
   },
   {
-    title: "🧠 Test Your Football IQ",
-    body: "Think you know the beautiful game? Today's Trivia Quiz is live. Can you score a perfect 5/5?",
+    title: "🧠 Daily Football Quiz",
+    body: "Today's trivia is live! Think you can get a perfect score and top the leaderboard? Test your knowledge now.",
   },
   {
-    title: "🎯 Fantasy Advisor Alert",
-    body: "Struggling to pick a captain? Our AI has analyzed 10,000+ data points to find today's hidden gem.",
+    title: "💎 Fantasy Pick Unlocked",
+    body: "Don't just pick the obvious captain. Our AI found a differential that could win your league. See the pick.",
   },
   {
-    title: "🔥 High-Stakes Match Tonight",
-    body: "The tension is building. Dive into our live matrix overview before kickoff to see where the game will be won.",
+    title: "🔥 Big Match Preview",
+    body: "The biggest game of the day is about to kick off. See our AI's pre-match analysis on where it will be won and lost.",
   },
   {
-    title: "📊 Form Analytics Updated",
-    body: "We've just crunched the numbers from the latest fixtures. See which teams are peaking at the right moment.",
+    title: " Who's In Form?",
+    body: "The latest match data is in. See which teams are on a hot streak and who's about to slip up before you make your pick.",
   },
   {
-    title: "⚔️ Key Pitch Battles",
-    body: "Midfield masterclass or defensive disaster? See our AI's breakdown of where today's matches will be decided.",
+    title: "⚔️ The Decisive Matchups",
+    body: "Will the midfield battle decide it? Our AI pinpoints the key player clashes that will shape today's results.",
   }
 ];
 
 // This endpoint can be hit (e.g., via a CRON job or manually) to trigger an engagement push
 app.get('/api/daily-engage', checkMaintenance, async (_req, res) => {
   const corsHeaders = { 'Access-Control-Allow-Origin': '*' };
-  
+
   try {
     // 1. Pick a random clever message
     const randomMsg = ENGAGEMENT_MESSAGES[Math.floor(Math.random() * ENGAGEMENT_MESSAGES.length)];
@@ -1123,14 +1135,14 @@ app.get('/api/daily-engage', checkMaintenance, async (_req, res) => {
     // Since users are subscribed to this by default (for major match goals), 
     // they will receive these engagement pushes even if they haven't explicitly followed a team.
     await sendFirebaseTopicNotification(
-      'global_goal_alerts', 
-      randomMsg.title, 
+      'global_goal_alerts',
+      randomMsg.title,
       randomMsg.body
     );
 
-    res.status(200).set(corsHeaders).json({ 
-      success: true, 
-      message_sent: randomMsg 
+    res.status(200).set(corsHeaders).json({
+      success: true,
+      message_sent: randomMsg
     });
   } catch (error) {
     console.error("Failed to send engagement push:", error);
@@ -1144,7 +1156,7 @@ app.post('/api/announce-update', checkAdminPassword, async (req, res) => {
   const corsHeaders = { 'Access-Control-Allow-Origin': '*' };
   try {
     const { title, body } = req.body;
-    
+
     if (!title || !body) {
       return res.status(400).set(corsHeaders).json({ error: "Title and body are required." });
     }
