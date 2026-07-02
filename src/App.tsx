@@ -43,10 +43,10 @@ function normalizeTeamName(name: string): string {
 
 // Define major tournaments with their API IDs for fetching dynamic standings
 const majorTournaments: Record<string, { tournamentId: string; seasonId: string } | null> = {
-  'Premier League': { tournamentId: '17', seasonId: '52186' }, // 2023/2024
-  'La Liga': { tournamentId: '8', seasonId: '52376' },       // 2023/2024
-  'UEFA Champions League': { tournamentId: '7', seasonId: '52162' }, // 2023/2024
-  'FIFA World Cup 2026': null, // This will use the static data as a fallback
+  'Premier League': { tournamentId: '47', seasonId: '0' }, // Mapped to new API's leagueid
+  'FIFA World Cup': { tournamentId: '1', seasonId: '0' }, // Mapped to new API's leagueid
+  'La Liga': { tournamentId: '148', seasonId: '0' }, // Mapped to new API's leagueid
+  'Champions League': { tournamentId: '7', seasonId: '0' }, // Mapped to new API's leagueid
 };
 
 /**
@@ -75,8 +75,8 @@ function App() {
   const [teams, setTeams] = useState<FootballTeamProfile[]>([]);
 
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
-  const [dynamicStandings, setDynamicStandings] = useState<Record<string, any>>({ 'FIFA World Cup 2026': WORLD_CUP_STANDINGS });
-  const [selectedTournament, setSelectedTournament] = useState<string>('FIFA World Cup 2026');
+  const [dynamicStandings, setDynamicStandings] = useState<Record<string, any>>({});
+  const [selectedTournament, setSelectedTournament] = useState<string>('Premier League');
   const [selectedTeam, setSelectedTeam] = useState<FootballTeamProfile | null>(null);
   const [activeTab, setActiveTab] = useState<'LIVE' | 'UPCOMING' | 'FINISHED' | 'TEAMS' | 'STANDINGS' | 'POLL'>('LIVE');
   const [activeAnalysisTab, setActiveAnalysisTab] = useState<'ANALYSIS' | 'TELEMETRY' | 'H2H' | 'HIGHLIGHTS'>('ANALYSIS');
@@ -96,6 +96,8 @@ function App() {
   const dbMatchesRef = useRef<Match[]>([]);
   const combinedMatchesRef = useRef<Match[]>([]);
   const highlightMatchIdsRef = useRef<Set<string>>(new Set());
+  const upcomingMatchesApiRef = useRef<Match[]>([]);
+  const lastUpcomingFetchTimeRef = useRef(0);
   const initialLoadCompleteRef = useRef<boolean>(false);
   const standingsLoadedRef = useRef<boolean>(false);
 
@@ -208,7 +210,7 @@ function App() {
         .filter(([, ids]) => ids !== null) // Exclude tournaments without API IDs
         .map(async ([name, ids]) => {
           try {
-            const res = await fetch(`/api/standings?tournamentId=${ids!.tournamentId}&seasonId=${ids!.seasonId}`);
+            const res = await fetch(`/api/standings?leagueid=${ids!.tournamentId}`);
             if (!res.ok) return [name, []];
             const data = await res.json();
             return [name, processFetchedStandings(data.standings)];
@@ -219,16 +221,14 @@ function App() {
         });
 
       const results = await Promise.all(standingsPromises);
-      const newStandings: Record<string, any> = {
-        'FIFA World Cup 2026': WORLD_CUP_STANDINGS, // Always include the static WC data
-      };
+      const newStandings: Record<string, any> = {};
 
       results.forEach(([name, data]) => {
         if (data && (data as any[]).length > 0) {
           newStandings[name as string] = data;
         }
       });
-      
+
       setDynamicStandings(newStandings);
       standingsLoadedRef.current = true; // Mark as loaded to prevent re-fetching
     };
@@ -348,33 +348,18 @@ function App() {
           }
         }
 
-        const dbMatches = (dbMatchesRef.current).reduce((acc: any[], m: any) => {
-          if (m.dbStatus === 'FINISHED' || m.dbStatus === 'FT') {
-            acc.push({ ...m, status: 'FINISHED', time: 'FT' });
-            return acc;
-          }
-
-          let isTimePassed = false;
+        // Fetch upcoming matches from the new dedicated API
+        const UPCOMING_API_COOLDOWN = 6 * 60 * 60 * 1000; // 6 hours
+        if (now - lastUpcomingFetchTimeRef.current > UPCOMING_API_COOLDOWN) {
           try {
-            if (m.time && m.time.includes(':')) {
-              const [hours, minutes] = m.time.split(':').map(Number);
-              const matchDateObj = new Date(m.date);
-              const istOffsetMinutes = 330;
-              const localOffsetMinutes = -matchDateObj.getTimezoneOffset();
-              const offsetDifference = localOffsetMinutes - istOffsetMinutes;
-              matchDateObj.setHours(hours, minutes + offsetDifference, 0, 0);
-
-              if (new Date().getTime() >= matchDateObj.getTime()) {
-                isTimePassed = true;
-              }
+            const upcomingRes = await fetch('/api/upcoming-matches');
+            if (upcomingRes.ok) {
+              const upcomingData = await upcomingRes.json();
+              upcomingMatchesApiRef.current = upcomingData.matches || [];
+              lastUpcomingFetchTimeRef.current = now;
             }
-          } catch (e) { }
-
-          if (!isTimePassed) {
-            acc.push({ ...m, status: 'UPCOMING', time: m.time });
-          }
-          return acc;
-        }, []);
+          } catch (e) { console.warn("Upcoming Matches API Fetch network error:", e); }
+        }
 
         const liveRes = await fetch(`/api/live-matches`);
         let liveMatches: any[] = [];
@@ -396,7 +381,7 @@ function App() {
           } catch (e) { }
         }
 
-        const dbMatchById = new Map((dbMatches as any[]).map((m: any) => [m.id, m]));
+        const dbMatchById = new Map((dbMatchesRef.current as any[]).map((m: any) => [m.id, m]));
         liveMatches = liveMatches.map((liveMatch: any) => {
           const dbMatch = dbMatchById.get(liveMatch.id);
           if (dbMatch?.youtubeHighlightId) {
@@ -446,10 +431,12 @@ function App() {
         const liveIds = liveMatches.map((m: Match) => String(m.id));
         const finishedLiveIds = finishedMatchesRef.current.map((m: Match) => String(m.id));
 
-        const nonLiveDbMatches = dbMatches.filter((m: Match) => !liveIds.includes(String(m.id)) && !finishedLiveIds.includes(String(m.id)));
+        // The DB only contains finished matches. Filter out any that are already accounted for.
+        const uniqueFinishedDbMatches = dbMatchesRef.current.filter((m: Match) => !liveIds.includes(String(m.id)) && !finishedLiveIds.includes(String(m.id)));
         const persistentFinishedMatches = finishedMatchesRef.current.filter((m: Match) => !liveIds.includes(String(m.id)));
+        const upcomingApiMatches = upcomingMatchesApiRef.current.filter((m: Match) => !liveIds.includes(String(m.id)));
 
-        const combinedMatches = [...liveMatches, ...persistentFinishedMatches, ...nonLiveDbMatches];
+        const combinedMatches = [...liveMatches, ...persistentFinishedMatches, ...uniqueFinishedDbMatches, ...upcomingApiMatches];
 
         combinedMatchesRef.current = combinedMatches;
         setMatches(combinedMatches);
