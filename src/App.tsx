@@ -41,13 +41,7 @@ function normalizeTeamName(name: string): string {
   return normalized.replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
 }
 
-// Define major tournaments with their API IDs for fetching dynamic standings
-const majorTournaments: Record<string, { tournamentId: string; seasonId: string } | null> = {
-  'Premier League': { tournamentId: '47', seasonId: '0' }, // Mapped to new API's leagueid
-  'FIFA World Cup': { tournamentId: '1', seasonId: '0' }, // Mapped to new API's leagueid
-  'La Liga': { tournamentId: '148', seasonId: '0' }, // Mapped to new API's leagueid
-  'Champions League': { tournamentId: '7', seasonId: '0' }, // Mapped to new API's leagueid
-};
+type Tournament = { name: string; leagueId: string };
 
 /**
  * Processes a flat list of teams from the API into groups for the UI.
@@ -69,14 +63,80 @@ const processFetchedStandings = (standingsData: any[]) => {
   return Object.values(groups);
 };
 
+/**
+ * Checks if the season has started based on standings data.
+ * @param standings - The processed standings data (array of groups).
+ * @returns True if at least one team has played a match, false otherwise.
+ */
+const hasSeasonStarted = (standings: any[]): boolean => {
+  if (!standings || standings.length === 0) {
+    return false;
+  }
+  // Check if any team in any group has played at least one match.
+  return standings.some(group =>
+    group.entries && group.entries.some((team: any) => team.played > 0)
+  );
+};
+
+/**
+ * Calculates an intelligent polling cooldown based on the current match states.
+ * This prevents excessive API calls while maintaining responsiveness.
+ * @param matches The list of all current matches.
+ * @param now The current timestamp.
+ * @returns The required cooldown in milliseconds.
+ */
+const getDynamicCooldown = (matches: Match[], now: number): number => {
+  if (matches.length === 0) {
+    return 15 * 60 * 1000; // Default 15 mins if no matches are loaded yet
+  }
+
+  const hasLive = matches.some((m) => m.status === 'LIVE');
+  if (hasLive) {
+    return 60 * 1000; // 1 minute if a match is live
+  }
+
+  const upcomingMatches = matches.filter((m) => m.status === 'UPCOMING');
+  if (upcomingMatches.length > 0) {
+    let minTimeUntilMatchMs = Infinity;
+
+    upcomingMatches.forEach((m) => {
+      try {
+        if (m.date && m.time && m.time.includes(':')) {
+          const [hours, minutes] = m.time.split(':').map(Number);
+          const matchDateObj = new Date(m.date);
+          const istOffsetMinutes = 330;
+          const localOffsetMinutes = -matchDateObj.getTimezoneOffset();
+          matchDateObj.setHours(hours, minutes + (localOffsetMinutes - istOffsetMinutes), 0, 0);
+
+          const timeUntil = matchDateObj.getTime() - now;
+          if (timeUntil > 0 && timeUntil < minTimeUntilMatchMs) { // Only consider future matches
+            minTimeUntilMatchMs = timeUntil;
+          }
+        }
+      } catch (e) { /* Ignore parsing errors */ }
+    });
+
+    if (minTimeUntilMatchMs !== Infinity) {
+      if (minTimeUntilMatchMs > 3 * 60 * 60 * 1000) return 60 * 60 * 1000; // >3h away: poll every hour
+      if (minTimeUntilMatchMs > 60 * 60 * 1000) return 15 * 60 * 1000; // >1h away: poll every 15 mins
+      if (minTimeUntilMatchMs > 15 * 60 * 1000) return 5 * 60 * 1000;  // >15m away: poll every 5 mins
+      return 2 * 60 * 1000; // <15m away: poll every 2 mins
+    }
+  }
+
+  // No live or upcoming matches, so we can poll very infrequently.
+  return 60 * 60 * 1000; // Poll every hour
+};
+
 function App() {
   const [matches, setMatches] = useState<Match[]>([]);
   // Start with an empty array for teams, we will fetch it from the backend
   const [teams, setTeams] = useState<FootballTeamProfile[]>([]);
 
+  const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   const [dynamicStandings, setDynamicStandings] = useState<Record<string, any>>({});
-  const [selectedTournament, setSelectedTournament] = useState<string>('Premier League');
+  const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
   const [selectedTeam, setSelectedTeam] = useState<FootballTeamProfile | null>(null);
   const [activeTab, setActiveTab] = useState<'LIVE' | 'UPCOMING' | 'FINISHED' | 'TEAMS' | 'STANDINGS' | 'POLL'>('LIVE');
   const [activeAnalysisTab, setActiveAnalysisTab] = useState<'ANALYSIS' | 'TELEMETRY' | 'H2H' | 'HIGHLIGHTS'>('ANALYSIS');
@@ -87,6 +147,7 @@ function App() {
   const [isMaintenance, setIsMaintenance] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [userLocation, setUserLocation] = useState('Global');
+  const [standingsError, setStandingsError] = useState<string | null>(null);
   const [sportName, setSportName] = useState('Football');
   const [alerts, setAlerts] = useState<any[]>([]);
 
@@ -112,7 +173,7 @@ function App() {
     try {
       const stored = localStorage.getItem('e2match_finished');
       const now = Date.now();
-      if (stored) return JSON.parse(stored).filter((m: Match) => m.id !== 'dummy-live-test' && (now - new Date(m.date).getTime()) < 48 * 3600 * 1000);
+      if (stored) return JSON.parse(stored).filter((m: Match) => m.id !== 'dummy-live-test' && (now - new Date(m.date).getTime()) < 72 * 3600 * 1000);
     } catch (e) { }
     return [];
   };
@@ -137,6 +198,25 @@ function App() {
       }
     };
     loadTeams();
+  }, []);
+
+  // Fetch the list of supported tournaments from the backend on mount
+  useEffect(() => {
+    const loadTournaments = async () => {
+      try {
+        const response = await fetch('/api/tournaments');
+        if (response.ok) {
+          const data: Tournament[] = await response.json();
+          if (data && data.length > 0) {
+            setTournaments(data);
+            // Defer selection until the 'Table' tab is actively clicked to avoid unnecessary initial fetches.
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching tournaments data:", error);
+      }
+    };
+    loadTournaments();
   }, []);
 
   useEffect(() => {
@@ -209,39 +289,57 @@ function App() {
 
   // Fetch standings from the backend when the Standings tab is active
   useEffect(() => {
-    const fetchAllStandings = async () => {
-      // Only fetch when the standings tab is active AND they haven't been loaded yet.
-      if (activeTab !== 'STANDINGS' || standingsLoadedRef.current) return;
+    const fetchSelectedStanding = async () => {
+      // Only fetch if the standings tab is active and the data for the selected tournament isn't already loaded.
+      if (activeTab !== 'STANDINGS' || !selectedTournament || dynamicStandings[selectedTournament.name]) {
+        return;
+      }
 
-      const standingsPromises = Object.entries(majorTournaments)
-        .filter(([, ids]) => ids !== null) // Exclude tournaments without API IDs
-        .map(async ([name, ids]) => {
-          try {
-            const res = await fetch(`/api/standings?leagueid=${ids!.tournamentId}`);
-            if (!res.ok) return [name, []];
-            const data = await res.json();
-            return [name, processFetchedStandings(data.standings)];
-          } catch (error) {
-            console.error(`Failed to fetch standings for ${name}:`, error);
-            return [name, []];
+      if (!selectedTournament.leagueId) return;
+
+      try {
+        setStandingsError(null); // Clear previous errors
+        const res = await fetch(`/api/standings?leagueId=${selectedTournament.leagueId}`);
+        if (res.ok) {
+          const data = await res.json();
+          // The backend now gracefully handles "no data" by returning an empty array.
+          const processedData = processFetchedStandings(data.standings);
+
+          // If API returns no data for World Cup, use the static 2026 fallback.
+          if (selectedTournament.name === 'World Cup' && processedData.length === 0) {
+            console.log("API returned no standings for World Cup, loading static 2026 data.");
+            setDynamicStandings(prev => ({
+              ...prev,
+              [selectedTournament.name]: WORLD_CUP_STANDINGS
+            }));
+          } else {
+            setDynamicStandings(prev => ({
+              ...prev,
+              [selectedTournament.name]: processedData
+            }));
           }
-        });
-
-      const results = await Promise.all(standingsPromises);
-      const newStandings: Record<string, any> = {};
-
-      results.forEach(([name, data]) => {
-        if (data && (data as any[]).length > 0) {
-          newStandings[name as string] = data;
+        } else {
+          throw new Error(`Failed to fetch standings. Server responded with status ${res.status}.`);
         }
-      });
-
-      setDynamicStandings(newStandings);
-      standingsLoadedRef.current = true; // Mark as loaded to prevent re-fetching
+      } catch (error) {
+        console.error(`Failed to fetch standings for ${selectedTournament.name}:`, error);
+        // Special fallback for World Cup using static data if API fails
+        if (selectedTournament.name === 'World Cup') {
+          console.log("API failed for World Cup, loading static fallback data.");
+          setDynamicStandings(prev => ({
+            ...prev,
+            [selectedTournament.name]: WORLD_CUP_STANDINGS
+          }));
+          setStandingsError(null); // Clear the error as we have a fallback
+        } else {
+          // Provide a more user-friendly error for other leagues during off-season
+          setStandingsError(`Could not load standings for ${selectedTournament.name}. The API might be temporarily unavailable or your server's API key could be invalid.`);
+        }
+      }
     };
 
-    fetchAllStandings();
-  }, [activeTab]); // Reruns only when user navigates to the standings tab
+    fetchSelectedStanding();
+  }, [activeTab, selectedTournament, dynamicStandings]); // Reruns when user changes tournament
 
   const setMaintenanceMode = async (enabled: boolean) => {
     const password = prompt('Please enter the admin password to change maintenance mode:');
@@ -287,53 +385,8 @@ function App() {
       }
 
       const now = Date.now();
-      let requiredCooldown = 0;
-      const allMatches = combinedMatchesRef.current;
-
-      if (allMatches.length > 0) {
-        const hasLive = allMatches.some((m) => m.status === 'LIVE');
-        if (hasLive) {
-          requiredCooldown = 60 * 1000;
-        } else {
-          const upcomingMatches = allMatches.filter((m) => m.status === 'UPCOMING');
-          if (upcomingMatches.length > 0) {
-            let minTimeUntilMatchMs = Infinity;
-
-            upcomingMatches.forEach((m) => {
-              try {
-                if (m.date && m.time && m.time.includes(':')) {
-                  const [hours, minutes] = m.time.split(':').map(Number);
-                  const matchDateObj = new Date(m.date);
-                  const istOffsetMinutes = 330;
-                  const localOffsetMinutes = -matchDateObj.getTimezoneOffset();
-                  matchDateObj.setHours(hours, minutes + (localOffsetMinutes - istOffsetMinutes), 0, 0);
-
-                  const timeUntil = matchDateObj.getTime() - now;
-                  if (timeUntil < minTimeUntilMatchMs) {
-                    minTimeUntilMatchMs = timeUntil;
-                  }
-                }
-              } catch (e) { }
-            });
-
-            if (minTimeUntilMatchMs !== Infinity) {
-              if (minTimeUntilMatchMs > 3 * 60 * 60 * 1000) {
-                requiredCooldown = 60 * 60 * 1000;
-              } else if (minTimeUntilMatchMs > 60 * 60 * 1000) {
-                requiredCooldown = 15 * 60 * 1000;
-              } else if (minTimeUntilMatchMs > 15 * 60 * 1000) {
-                requiredCooldown = 5 * 60 * 1000;
-              } else {
-                requiredCooldown = 2 * 60 * 1000;
-              }
-            } else {
-              requiredCooldown = 10 * 60 * 1000;
-            }
-          } else {
-            requiredCooldown = 60 * 60 * 1000;
-          }
-        }
-      }
+      // Use the new helper function to get an intelligent cooldown period.
+      const requiredCooldown = getDynamicCooldown(combinedMatchesRef.current, now);
 
       if (now - lastFetchTimeRef.current < requiredCooldown) {
         return;
@@ -355,8 +408,8 @@ function App() {
           }
         }
 
-        // Fetch upcoming matches from the new dedicated API
-        const UPCOMING_API_COOLDOWN = 6 * 60 * 60 * 1000; // 6 hours
+        // Fetch upcoming matches from the new dedicated API, max 3 times per day
+        const UPCOMING_API_COOLDOWN = 8 * 60 * 60 * 1000; // 8 hours
         if (now - lastUpcomingFetchTimeRef.current > UPCOMING_API_COOLDOWN) {
           try {
             const upcomingRes = await fetch('/api/upcoming-matches');
@@ -429,7 +482,7 @@ function App() {
         if (finishedUpdated) {
           try {
             const now = Date.now();
-            const recent = finishedMatchesRef.current.filter(m => (now - new Date(m.date).getTime()) < 48 * 3600 * 1000);
+            const recent = finishedMatchesRef.current.filter(m => (now - new Date(m.date).getTime()) < 72 * 3600 * 1000);
             finishedMatchesRef.current = recent;
             localStorage.setItem('e2match_finished', JSON.stringify(recent));
           } catch (e) { }
@@ -498,12 +551,12 @@ function App() {
 
         previousMatchesRef.current = liveMatches;
 
+        // This logic was removed to prevent an automatic AI prediction on page load,
+        // which was quickly using up the free Gemini API quota.
+        // A match is now only selected by explicit user interaction.
         setSelectedMatch(prev => {
-          if (!prev) {
-            return combinedMatches.find((m: Match) => m.status === 'LIVE') ||
-              combinedMatches.find((m: Match) => m.status === 'UPCOMING') ||
-              combinedMatches[0];
-          }
+          if (!prev) return null; // Do not auto-select a match on initial load.
+
           const updatedMatch = combinedMatches.find((m: Match) => m.id === prev.id);
           if (!updatedMatch) return prev;
 
@@ -524,7 +577,10 @@ function App() {
     };
 
     fetchAllMatches();
-    const interval = setInterval(fetchAllMatches, 10000);
+    // Increased interval to 30 seconds to be more conservative with API calls.
+    // The internal cooldown logic inside fetchAllMatches provides further protection,
+    // but this base interval reduces unnecessary client-side checks and API load.
+    const interval = setInterval(fetchAllMatches, 30000);
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') fetchAllMatches();
@@ -652,10 +708,17 @@ function App() {
         <main className="max-w-[1600px] mx-auto p-4 md:p-6 pb-24 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start relative min-h-screen">
           <div className="lg:col-span-4 xl:col-span-3 flex flex-col gap-4 sticky top-24">
             <div className="bg-[#0B1121] border border-white/5 p-1.5 rounded-xl grid grid-cols-6 gap-1 text-center">
-              <button onClick={() => { setActiveTab('LIVE'); setSelectedTeam(null); setSelectedMatch(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'LIVE' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}><span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span> Live</button>
-              <button onClick={() => { setActiveTab('UPCOMING'); setSelectedTeam(null); setSelectedMatch(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'UPCOMING' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><Calendar className="w-3 h-3" /> Upcoming</button>
-              <button onClick={() => { setActiveTab('FINISHED'); setSelectedTeam(null); setSelectedMatch(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'FINISHED' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><History className="w-3 h-3" /> Results</button>
-              <button onClick={() => { setActiveTab('STANDINGS'); setSelectedTeam(null); setSelectedMatch(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'STANDINGS' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><ListOrdered className="w-3 h-3" /> Table</button>
+              <button onClick={() => { setActiveTab('LIVE'); setSelectedTeam(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'LIVE' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}><span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span> Live</button>
+              <button onClick={() => { setActiveTab('UPCOMING'); setSelectedTeam(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'UPCOMING' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><Calendar className="w-3 h-3" /> Upcoming</button>
+              <button onClick={() => { setActiveTab('FINISHED'); setSelectedTeam(null); }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'FINISHED' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><History className="w-3 h-3" /> Results</button>
+              <button onClick={() => {
+                setActiveTab('STANDINGS');
+                setSelectedTeam(null);
+                // If tournaments are loaded but none is selected, select the first one.
+                if (tournaments.length > 0 && !selectedTournament) {
+                  setSelectedTournament(tournaments[0]);
+                }
+              }} className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'STANDINGS' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}><ListOrdered className="w-3 h-3" /> Table</button>
 
               <button onClick={() => { setActiveTab('TEAMS'); setSelectedTeam(teams[0] || null); setSelectedMatch(null); }} className={`relative py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${activeTab === 'TEAMS' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}>
                 <Shield className="w-3 h-3" /> Teams <span className="absolute top-0 right-1 text-[7px] font-bold bg-indigo-500 text-white px-1 rounded-full">NEW</span>
@@ -718,10 +781,23 @@ function App() {
                 </div>
               )}
               {activeTab === 'STANDINGS' ? (
-                <div className="bg-indigo-600/10 border border-indigo-500/20 rounded-xl p-6 text-center shadow-inner flex flex-col items-center justify-center min-h-[300px]">
-                  <Globe className="w-12 h-12 text-indigo-400 mb-4 animate-[spin_10s_linear_infinite]" />
-                  <h4 className="text-sm font-black text-white uppercase tracking-widest mb-2">Global Group Stage</h4>
-                  <p className="text-xs text-slate-400 leading-relaxed">The top two teams from each group, along with the eight best third-placed teams, will advance to the Round of 32.</p>
+                <div className="flex flex-col gap-2 animate-fade-in-up">
+                  <h4 className="text-[10px] font-black text-slate-400 tracking-widest uppercase mb-2 px-2">Select a League</h4>
+                  {tournaments.map(tournament => (
+                    <div
+                      key={tournament.name}
+                      onClick={() => setSelectedTournament(tournament)}
+                      className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${selectedTournament?.name === tournament.name ? 'bg-gradient-to-r from-indigo-950/40 to-[#0B1121] border-indigo-500/50' : 'bg-[#0B1121] border-white/5 hover:border-indigo-500/30'}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Trophy className="w-4 h-4 text-indigo-400" />
+                        <span className="text-xs font-bold text-white">{tournament.name}</span>
+                      </div>
+                    </div>
+                  ))}
+                  {tournaments.length === 0 && (
+                    <div className="text-xs text-slate-500 text-center p-8">Loading tournaments...</div>
+                  )}
                 </div>
               ) : activeTab !== 'TEAMS' ? (
                 <>
@@ -752,8 +828,12 @@ function App() {
                   )}
 
                   {matchesToDisplay.length === 0 ? (
-                    <div className="text-xs text-slate-500 text-center p-8 bg-[#0B1121] rounded-xl border border-white/5 flex flex-col items-center gap-2">
-                      <span className="text-2xl">⚽</span><span className="font-bold">No matches here yet.</span>
+                    <div className="text-xs text-slate-500 text-center p-8 bg-[#0B1121] rounded-xl border border-white/5 flex flex-col items-center gap-4">
+                      <History className="w-8 h-8 text-slate-600" />
+                      <div>
+                        <span className="font-bold text-slate-400">No Recent Results</span>
+                        <p className="mt-1">Finished matches from the last 72 hours will appear here.</p>
+                      </div>
                     </div>
                   ) : (
                     matchesToDisplay.map((match, index) => (
@@ -808,19 +888,43 @@ function App() {
 
           <div className="lg:col-span-8 xl:col-span-9 flex flex-col gap-6" id="ai-analysis-section">
             {activeTab === 'STANDINGS' ? (
-              <div className="flex flex-col gap-4">
-                <div className="flex items-center gap-2 overflow-x-auto pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                  {Object.keys(dynamicStandings || {}).map(comp => (
-                    <button
-                      key={comp}
-                      onClick={() => setSelectedTournament(comp)}
-                      className={`shrink-0 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${selectedTournament === comp ? 'bg-indigo-600 text-white border-indigo-500 shadow-[0_0_15px_rgba(79,70,229,0.3)]' : 'bg-[#0B1121] text-slate-400 border-white/5 hover:bg-white/5'}`}
-                    >
-                      {comp}
-                    </button>
-                  ))}
-                </div>
-                <StandingsGrid standings={dynamicStandings[selectedTournament] || []} />
+              <div className="animate-fade-in-up">
+                {standingsError ? (
+                  <div className="bg-red-500/10 border border-red-400/20 rounded-xl p-6 text-center shadow-inner flex flex-col items-center justify-center min-h-[300px]">
+                    <Shield className="w-12 h-12 text-red-400 mb-4" />
+                    <h4 className="text-sm font-black text-white uppercase tracking-widest mb-2">Standings Unavailable</h4>
+                    <p className="text-xs text-slate-400 leading-relaxed max-w-md">{standingsError}</p>
+                  </div>
+                ) : selectedTournament ? (() => {
+                  const currentStandings = dynamicStandings[selectedTournament.name];
+                  const seasonHasStarted = hasSeasonStarted(currentStandings);
+
+                  if (currentStandings && currentStandings.length > 0) {
+                    return (
+                      <>
+                        {!seasonHasStarted && (
+                          <div className="bg-blue-500/10 border border-blue-400/20 rounded-xl p-4 text-center text-sm text-blue-300 mb-4 shadow-inner">
+                            The season has not started yet. All teams are on 0 points.
+                          </div>
+                        )}
+                        <StandingsGrid standings={currentStandings} />
+                      </>
+                    );
+                  } else {
+                    return (
+                    <div className="bg-[#0B1121] border border-white/5 rounded-2xl p-6 text-center shadow-inner flex flex-col items-center justify-center min-h-[300px]">
+                      <Trophy className="w-12 h-12 text-indigo-400/50 mb-4" />
+                      <h4 className="text-sm font-black text-white uppercase tracking-widest mb-2">Standings Not Available</h4>
+                      <p className="text-sm text-slate-400 max-w-md">Live standings for {selectedTournament.name} are not available at this time. This is common for tournaments that are in the off-season.</p>
+                    </div>
+                    );
+                  }
+                })() : (
+                  <div className="bg-[#0B1121] border border-white/5 rounded-2xl p-6 text-center shadow-inner flex flex-col items-center justify-center min-h-[300px]">
+                    <ListOrdered className="w-12 h-12 text-indigo-400/50 mb-4" />
+                    <p className="text-sm text-slate-400">Select a league from the list on the left to view its table.</p>
+                  </div>
+                )}
               </div>
             ) : activeTab === 'POLL' ? (
               <div id="fan-poll" className="scroll-mt-24 animate-fade-in-up">

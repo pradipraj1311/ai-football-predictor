@@ -13,29 +13,32 @@ dotenv.config();
 // --- INITIALIZE FIREBASE ADMIN (MODULAR MODE) ---
 let isFirebaseInitialized = false;
 try {
-  if (getApps().length === 0) {
-    const projectId = process.env.project_id || '';
-    const clientEmail = process.env.client_email || '';
-    const privateKey = (process.env.private_key || '').replace(/\\n/g, '\n');
+  const projectId = process.env.project_id || '';
+  const clientEmail = process.env.client_email || '';
+  const privateKey = (process.env.private_key || '').replace(/\\n/g, '\n');
 
+  if (getApps().length === 0) { // Prevents re-initialization on hot reloads
     if (projectId && clientEmail && privateKey) {
       initializeApp({
         credential: cert({
           projectId,
           clientEmail,
           privateKey,
-        }),
+        })
       });
       isFirebaseInitialized = true;
       console.log("Firebase Admin Initialized Successfully! (Modular Mode)");
     } else {
-      console.error("CRITICAL ERROR: Firebase Environment Variables are missing.");
+      // Allow server to run without Firebase creds in dev, just disable notifications.
+      console.warn("WARNING: Firebase Environment Variables (project_id, client_email, private_key) are missing. Push notifications will be disabled.");
     }
   } else {
     isFirebaseInitialized = true; // Already initialized (Warm start)
   }
 } catch (error) {
-  console.error("CRITICAL: Firebase Admin Initialization Failed:", error);
+  console.error("Firebase Admin Initialization Failed:", error);
+  // Don't crash the server in dev if Firebase fails, just warn the user.
+  console.warn("The server will continue to run, but push notifications will be disabled.");
 }
 // ----------------------------------------------
 
@@ -51,9 +54,9 @@ if (dbUrl && dbUrl.includes('sslmode=require') && !dbUrl.includes('uselibpqcompa
 const pool = new Pool({
   connectionString: dbUrl,
   ssl: { rejectUnauthorized: false },
-  max: 1,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
+  max: 2, // Allow a bit more flexibility for concurrent requests
+  idleTimeoutMillis: 60000, // Increase idle timeout to 60 seconds
+  connectionTimeoutMillis: 20000, // Increase connection timeout to 20 seconds
 });
 
 const checkMaintenance = async (_req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -182,7 +185,7 @@ let sofa429Count = 0;
 let currentSofaKeyIndex = 0;
 const SOFA_MAX_BACKOFF = 10 * 60 * 1000;
 const SOFA_BACKOFF_JITTER = 0.25;
-const SOFA_MIN_INTERVAL = 300 * 1000; // 5 minutes: a safe interval to protect the 2000/mo live match quota
+const SOFA_MIN_INTERVAL = 30 * 60 * 1000; // 30 minutes: A safe interval to stay under the 2000 calls/month SofaScore quota.
 
 const teamNameAliases: { [key: string]: string } = {
   'dr congo': 'congo dr',
@@ -344,89 +347,127 @@ app.get('/api/team-stats/:teamId', (req, res) => {
   }
 });
 
+// --- CENTRALIZED TOURNAMENT MANAGEMENT ---
+const SUPPORTED_TOURNAMENTS = [
+  { name: 'Premier League', leagueId: '47' }, // English Premier League
+  { name: 'La Liga', leagueId: '48' }, // Spanish La Liga
+  { name: 'Champions League', leagueId: '16' }, // UEFA Champions League
+  { name: 'World Cup', leagueId: '7' }, // FIFA World Cup
+];
+
+app.get('/api/tournaments', async (_req, res) => {
+  const corsHeaders = { 'Access-Control-Allow-Origin': '*' };
+  const activeTournamentsCacheKey = 'active_tournaments_list:v2';
+
+  try {
+    const cachedActiveTournaments = await getCache(activeTournamentsCacheKey);
+    if (cachedActiveTournaments) {
+      console.log("Serving active tournaments from cache.");
+      return res.status(200).set(corsHeaders).json(cachedActiveTournaments);
+    }
+
+    console.log("Checking for active tournaments by fetching standings data...");
+    const activityChecks = SUPPORTED_TOURNAMENTS.map(async (tourn) => {
+      const standings = await fetchAndCacheStandings(tourn.leagueId);
+      // A tournament is "active" if its standings data is not empty and at least one team has played a match.
+      const isActive = standings ? standings.some(team => team.played > 0) : false;
+      return { ...tourn, isActive };
+    });
+
+    const results = await Promise.all(activityChecks);
+    const activeTournaments = results.filter(r => r.isActive).map(({ isActive, ...rest }) => rest);
+
+    // Always include the World Cup in the list, as the frontend has a static data fallback for it.
+    const worldCup = SUPPORTED_TOURNAMENTS.find(t => t.name === 'World Cup');
+    if (worldCup && !activeTournaments.some(t => t.name === 'World Cup')) {
+      activeTournaments.push(worldCup);
+    }
+
+    // Cache the list of active tournaments for 8 hours to avoid repeated checks.
+    await setCache(activeTournamentsCacheKey, activeTournaments, 28800);
+
+    res.status(200).set(corsHeaders).json(activeTournaments);
+
+  } catch (error) {
+    console.error("Error fetching active tournaments:", error);
+    // On error, fall back to the full static list to ensure the app remains usable.
+    res.status(200).set(corsHeaders).json(SUPPORTED_TOURNAMENTS);
+  }
+});
 
 // --- REAL API LOGIC REACTIVATED ---
 
-app.get('/api/db-matches', checkMaintenance, async (_req, res) => {
+/**
+ * A centralized function to fetch, parse, and cache standings for a given league ID.
+ * This avoids code duplication between the /standings and /tournaments endpoints.
+ * @param leagueId The ID of the league to fetch.
+ * @returns A promise that resolves to an array of standings data, an empty array for off-season, or null on hard error.
+ */
+async function fetchAndCacheStandings(leagueId: string): Promise<any[] | null> {
+  const apiKey = process.env.RAPID_API_KEY_STANDINGS;
+  if (!apiKey) {
+    console.error("Standings API key (RAPID_API_KEY_STANDINGS) is not configured.");
+    return null;
+  }
+
+  const cacheKey = `standings_freeapi:${leagueId}`;
+
+  // 1. Check Redis Cache
+  const cachedData = await getCache(cacheKey);
+  if (cachedData) {
+    return cachedData;
+  }
+
+  // 2. Fetch from free-api-live-football-data
+  console.log(`Fetching new standings for League: ${leagueId}...`);
+  const url = `https://free-api-live-football-data.p.rapidapi.com/football-get-standing-all?leagueid=${leagueId}`;
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Content-Type': 'application/json',
-    'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120'
   };
-  if (!process.env.DB_URL) {
-    console.warn('DB_URL not set. Returning empty matches.');
-    return res.status(200).set(corsHeaders).json({ matches: [], warning: 'DB not configured' });
-  }
 
   try {
-    const client = await pool.connect();
-    const result = await client.query(
-      "SELECT * FROM world_cup_matches WHERE db_status = 'FINISHED' ORDER BY match_date DESC, match_time DESC"
-    );
-    client.release();
-
-    const dynamicMatches = await Promise.all(result.rows.map(async (row) => {
-      const homeTeamName = typeof row.home_team === 'string' ? row.home_team : row.home_team?.name || 'Home';
-      const awayTeamName = typeof row.away_team === 'string' ? row.away_team : row.away_team?.name || 'Away';
-
-      const rawMatchTime = typeof row.match_time === 'string' ? row.match_time.toUpperCase() : '';
-      const isFinished = rawMatchTime.includes('FT') || row.db_status === 'FINISHED' || row.dbStatus === 'FINISHED' || row.match_status === 'FINISHED';
-      let ytId = row.youtube_highlight_id;
-
-      if (isFinished && !ytId && process.env.YOUTUBE_API_KEY) {
-        const fetchedId = await fetchAndSaveHighlight(row.id, homeTeamName, awayTeamName);
-        if (fetchedId) ytId = fetchedId;
+    const response = await fetch(url, {
+      headers: {
+        'x-rapidapi-key': apiKey,
+        'x-rapidapi-host': 'free-api-live-football-data.p.rapidapi.com',
+        'Content-Type': 'application/json'
       }
+    });
 
-      let displayTime = row.match_time;
-      if (typeof displayTime === 'string' && displayTime.match(/^\d{2}:\d{2}(:\d{2})?$/)) {
-        displayTime = displayTime.substring(0, 5);
-      }
+    if (!response.ok) {
+      console.error(`Standings API for league ${leagueId} returned ${response.status}`);
+      return null; // Return null on hard API errors
+    }
+
+    const data = await response.json();
+
+    if (data.status !== 'success' || !data.response?.standing || data.response.standing.length === 0) {
+      await setCache(cacheKey, [], 3600); // Cache empty result for 1 hour for off-season leagues
+      return [];
+    }
+
+    const flatStandings = data.response.standing.map((row: any) => {
+      const [goalsFor, goalsAgainst] = (row.scoresStr || "0-0").split('-').map(Number);
+      const normalizedApiTeamName = normalizeTeamName(row.name);
+      const matchedTeam = MANAGED_TEAMS.find(t => normalizeTeamName(t.name) === normalizedApiTeamName);
+      const logo = matchedTeam ? matchedTeam.logo : '⚽';
 
       return {
-        id: row.id,
-        competition: row.competition || 'FIFA World Cup 2026',
-        status: isFinished ? 'FINISHED' : 'SCHEDULED',
-        dbStatus: isFinished ? 'FINISHED' : 'SCHEDULED',
-        time: isFinished ? 'FT' : (displayTime || 'TBD'),
-        date: new Date(row.match_date).toISOString().split('T')[0],
-        youtubeHighlightId: ytId || null,
-        homeTeam: {
-          id: row.home_team_id || homeTeamName.toLowerCase().replace(/\s/g, '-'),
-          name: homeTeamName,
-          code: row.home_team_code || homeTeamName.substring(0, 3).toUpperCase(),
-          logo: row.home_team_logo || '⚽',
-          form: row.home_team_form ? JSON.parse(row.home_team_form) : ['W', 'D', 'W', 'L', 'W']
-        },
-        awayTeam: {
-          id: row.away_team_id || awayTeamName.toLowerCase().replace(/\s/g, '-'),
-          name: awayTeamName,
-          code: row.away_team_code || awayTeamName.substring(0, 3).toUpperCase(),
-          logo: row.away_team_logo || '⚽',
-          form: row.away_team_form ? JSON.parse(row.away_team_form) : ['D', 'W', 'L', 'W', 'D']
-        },
-        homeScore: row.home_score ?? 0,
-        awayScore: row.away_score ?? 0,
-        stats: {
-          possession: { home: 50, away: 50 },
-          shots: { home: 10, away: 8 },
-          shotsOnTarget: { home: 4, away: 3 },
-          fouls: { home: 10, away: 12 },
-          yellowCards: { home: 1, away: 2 },
-          redCards: { home: 0, away: 0 },
-          corners: { home: 5, away: 4 }
-        },
-        events: [],
-        h2h: { matchesPlayed: 5, homeWins: 2, awayWins: 1, draws: 2, lastResults: ['W', 'D', 'L', 'W', 'D'] }
+        rank: row.idx, teamName: row.name, logo, played: row.played, win: row.wins,
+        draw: row.draws, lose: row.losses, goalsFor, goalsAgainst, gd: row.goalConDiff,
+        points: row.pts, group: 'League Table'
       };
-    }));
+    });
 
-    res.status(200).set(corsHeaders).json({ matches: dynamicMatches });
+    await setCache(cacheKey, flatStandings, 28800); // Cache for 8 hours
+    return flatStandings;
+
   } catch (error: any) {
-    console.error('Database Error:', error.message);
-    res.status(200).set(corsHeaders).json({ matches: [], warning: 'Failed to fetch matches from DB' });
+    console.error(`Failed to fetch and cache standings for league ${leagueId}:`, error.message);
+    return null; // Return null on exception
   }
-});
+}
 
 // ✅ RAPID API ACTIVATED
 app.get('/api/live-matches', checkMaintenance, async (_req, res) => {
@@ -555,7 +596,9 @@ app.get('/api/live-matches', checkMaintenance, async (_req, res) => {
           status,
           minute: m.status?.description ? parseInt(m.status.description.replace(/\D/g, '')) || 0 : 0,
           time: status === 'FINISHED' ? 'FT' : (m.status?.description || 'LIVE'),
-          date: new Date(m.startTimestamp * 1000).toISOString(),
+          date: m.startTimestamp && typeof m.startTimestamp === 'number'
+            ? new Date(m.startTimestamp * 1000).toISOString()
+            : new Date().toISOString(),
           homeScore: m.homeScore?.current ?? 0,
           awayScore: m.awayScore?.current ?? 0,
           homeTeam: { id: `t_${m.homeTeam?.id}`, name: m.homeTeam?.name || 'Home', code: (m.homeTeam?.name || 'HOM').substring(0, 3).toUpperCase(), logo: '⚽' },
@@ -597,70 +640,21 @@ app.get('/api/live-matches', checkMaintenance, async (_req, res) => {
 
 app.get('/api/standings', async (req, res) => {
   const corsHeaders = { 'Access-Control-Allow-Origin': '*' };
+  const { leagueId } = req.query;
 
-  const tournamentId = req.query.tournamentId || '16';
-  const seasonId = req.query.seasonId || '52186';
-
-  // The new API uses a single leagueid. We'll map the Premier League to it.
-  const leagueId = req.query.leagueid || '47';
-
-  const cacheKey = `standings_v2:${leagueId}`;
-
-  try {
-    const cachedData = await getCache(cacheKey);
-    if (cachedData && cachedData.data) {
-      console.log(`Served Standings from Cache for Tournament: ${tournamentId}`);
-      return res.status(200).set(corsHeaders).json({ standings: cachedData.data, cached: true });
-    }
-
-    console.log(`Fetching External Standings from new API for League: ${leagueId}...`);
-    const apiKey = process.env.RAPID_API_KEY_2; // Use the key named in Vercel
-    if (!apiKey) throw new Error('RAPID_API_KEY_2 (for standings) is missing.');
-
-    const url = `https://free-api-live-football-data.p.rapidapi.com/football-get-standing-all?leagueid=${leagueId}`;
-    const response = await fetch(url, {
-      headers: {
-        'X-RapidAPI-Key': apiKey,
-        'X-RapidAPI-Host': 'free-api-live-football-data.p.rapidapi.com'
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error(`API returned ${response.status}`);
-    }
-
-    const data = await response.json();
-
-    let formattedStandings: any[] = [];
-    // The new API response structure is assumed to be an array of standings objects.
-    // This will need to be adjusted if the actual structure is different.
-    if (data && Array.isArray(data)) {
-      const groupName = data[0]?.league_name || 'League Table';
-      formattedStandings = data.map((row: any) => ({
-        rank: row.rank,
-        teamName: row.team_name || 'Unknown',
-        logo: row.team_logo || '⚽',
-        played: row.played || 0,
-        win: row.win || 0,
-        draw: row.draw || 0,
-        lose: row.lose || 0,
-        goalsFor: row.goals_for || 0,
-        goalsAgainst: row.goals_against || 0,
-        gd: (row.goals_for || 0) - (row.goals_against || 0),
-        points: row.points || 0,
-        group: groupName,
-      }));
-    }
-
-    if (formattedStandings.length > 0) {
-      await setCache(cacheKey, { data: formattedStandings }, 28800); // Cache for 8 hours
-    }
-
-    res.status(200).set(corsHeaders).json({ standings: formattedStandings, cached: false });
-  } catch (error: any) {
-    console.error("Standings Fetch Error:", error.message);
-    res.status(200).set(corsHeaders).json({ standings: [], error: error.message });
+  if (!leagueId) {
+    return res.status(400).set(corsHeaders).json({ standings: [], error: "A leagueId is required." });
   }
+
+  const standingsData = await fetchAndCacheStandings(String(leagueId));
+
+  if (standingsData === null) {
+    // A null response indicates a server-side or API key issue.
+    return res.status(500).set(corsHeaders).json({ standings: [], error: "The server encountered an error fetching standings." });
+  }
+
+  // An empty array is a valid response for an off-season league.
+  res.status(200).set(corsHeaders).json({ standings: standingsData });
 });
 
 app.get('/api/upcoming-matches', checkMaintenance, async (_req, res) => {
@@ -670,49 +664,79 @@ app.get('/api/upcoming-matches', checkMaintenance, async (_req, res) => {
     'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600'
   };
 
-  const cacheKey = 'upcoming-matches:v2';
+  const cacheKey = 'betminer-matches:v1';
 
   try {
     const cachedData = await getCache(cacheKey);
     if (cachedData && cachedData.data) {
-      console.log(`Served Upcoming Matches from Cache.`);
+      console.log(`Served Daily Matches from Cache (Betminer).`);
       return res.status(200).set(corsHeaders).json({ matches: cachedData.data, cached: true });
     }
 
-    console.log('Fetching new Upcoming Matches from API...');
-    const apiKey = process.env.RAPID_API_KEY_3; // Use the key named in Vercel
-    if (!apiKey) throw new Error('RAPID_API_KEY_3 (for upcoming) is missing.');
+    console.log('Fetching new Daily Matches from Betminer API...');
+    let apiKey = process.env.RAPID_API_KEY_BETMINER;
+    if (!apiKey) {
+      console.warn("WARNING: RAPID_API_KEY_BETMINER is missing. Falling back to RAPID_API_KEY_STANDINGS. This may not work if the keys are for different API subscriptions.");
+      apiKey = process.env.RAPID_API_KEY_STANDINGS;
+    }
 
-    const url = 'https://whoscored-football-data-api.p.rapidapi.com/api/v1/matches/upcoming';
+    if (!apiKey) throw new Error('No valid API key found for Betminer (checked RAPID_API_KEY_BETMINER and RAPID_API_KEY_STANDINGS).');
+
+    const today = new Date().toISOString().split('T')[0];
+    const url = `https://betminer.p.rapidapi.com/bm/v3/edge-analysis/${today}`;
+
     const response = await fetch(url, {
       headers: {
-        'X-RapidAPI-Key': apiKey,
-        'X-RapidAPI-Host': 'whoscored-football-data-api.p.rapidapi.com'
+        'x-rapidapi-key': apiKey,
+        'x-rapidapi-host': 'betminer.p.rapidapi.com',
+        'Content-Type': 'application/json'
       }
     });
 
     if (!response.ok) throw new Error(`Upcoming Matches API returned ${response.status}`);
 
     const data = await response.json();
-    let matches: any[] = [];
 
-    // Assuming the response is an array of match objects. This needs verification.
-    if (data && Array.isArray(data)) {
-      matches = data.map((m: any) => ({
-        id: m.match_id || `upcoming_${Math.random()}`,
-        competition: m.competition_name || 'Upcoming Match',
-        status: 'UPCOMING',
-        time: m.match_time || 'TBD',
-        date: m.match_date ? new Date(m.match_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-        homeTeam: { id: m.home_team_id || 'home', name: m.home_team_name || 'Home Team', code: (m.home_team_name || 'HOM').substring(0, 3).toUpperCase(), logo: '⚽' },
-        awayTeam: { id: m.away_team_id || 'away', name: m.away_team_name || 'Away Team', code: (m.away_team_name || 'AWY').substring(0, 3).toUpperCase(), logo: '⚽' },
-        homeScore: 0,
-        awayScore: 0,
-      }));
+    if (!data.success || !Array.isArray(data.data)) {
+      throw new Error('Betminer API returned invalid data structure');
     }
 
+    const matches = data.data.map((m: any) => {
+      const kickoffDate = new Date(m.kickoff);
+      let status: 'UPCOMING' | 'FINISHED' | 'LIVE' = 'UPCOMING';
+      if (m.status === 'FT') {
+        status = 'FINISHED';
+      } else if (m.status === 'LIVE' || (m.minute && m.minute > 0)) {
+        status = 'LIVE';
+      }
+
+      return {
+        id: String(m.match_id),
+        competition: m.competition?.name || 'Match',
+        status: status,
+        time: kickoffDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) || 'TBD',
+        date: kickoffDate.toISOString().split('T')[0],
+        homeScore: m.score?.home ?? null,
+        awayScore: m.score?.away ?? null,
+        homeTeam: {
+          id: String(m.home_team?.id),
+          name: m.home_team?.name || 'Home',
+          code: (m.home_team?.name || 'HOM').substring(0, 3).toUpperCase(),
+          logo: m.home_team?.logo || '⚽', // Now using real logo URL
+          form: m.form?.home?.split('') || []
+        },
+        awayTeam: {
+          id: String(m.away_team?.id),
+          name: m.away_team?.name || 'Away',
+          code: (m.away_team?.name || 'AWY').substring(0, 3).toUpperCase(),
+          logo: m.away_team?.logo || '⚽', // Now using real logo URL
+          form: m.form?.away?.split('') || []
+        },
+      };
+    });
+
     if (matches.length > 0) {
-      await setCache(cacheKey, { data: matches }, 21600); // Cache for 6 hours
+      await setCache(cacheKey, { data: matches }, 28800); // Cache for 8 hours
     }
 
     res.status(200).set(corsHeaders).json({
@@ -867,9 +891,6 @@ app.get('/api/trivia', checkMaintenance, (_req, res) => {
   });
 });
 
-let predictionCache: { [matchId: string]: { data: any; timestamp: number; scoreHash: string } } = {};
-const PREDICT_CACHE_DURATION = 10 * 60 * 1000; // Cache for 10 minutes to conserve Gemini API calls
-
 app.options('/api/predict', (req, res) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -878,6 +899,8 @@ app.options('/api/predict', (req, res) => {
   };
   res.status(204).set(corsHeaders).end();
 });
+
+const PREDICT_CACHE_DURATION = 30 * 60; // Cache for 30 minutes (in seconds for Redis)
 
 app.post('/api/predict', checkMaintenance, async (req, res) => {
   const corsHeaders = {
@@ -889,12 +912,34 @@ app.post('/api/predict', checkMaintenance, async (req, res) => {
     const { match } = req.body;
     if (!match || !match.id) return res.status(400).set(corsHeaders).json({ error: "Invalid match payload." });
 
+    // Prevent wasting API calls on matches that are already over.
+    const isFinished = ['FINISHED', 'FT', 'ENDED', 'AET', 'PEN', 'CLOSED'].includes(String(match.status).toUpperCase());
+    if (isFinished) {
+      return res.status(200).set(corsHeaders).json({
+        prediction: {
+          analysis: "This match has already finished. AI analysis is only available for upcoming or live matches.",
+          vulnerabilities: { home: "N/A", away: "N/A" },
+          keyMatchups: [],
+          winProbability: { home: 0, draw: 0, away: 0 },
+          suggestedScore: `${match.homeScore}-${match.awayScore}`,
+          advisor: null
+        },
+        cached: true // Indicate no new processing was done.
+      });
+    }
+
     const matchId = String(match.id);
     const currentScoreHash = `${match.homeScore ?? 0}-${match.awayScore ?? 0}`;
-    const now = Date.now();
+    const cacheKey = `prediction:${matchId}:${currentScoreHash}`;
 
-    if (predictionCache[matchId] && (now - predictionCache[matchId].timestamp < PREDICT_CACHE_DURATION) && predictionCache[matchId].scoreHash === currentScoreHash) {
-      return res.status(200).set(corsHeaders).json({ prediction: predictionCache[matchId].data, cached: true });
+    // Check Redis cache first to avoid unnecessary API calls
+    if (hasRedis()) {
+      try {
+        const cachedPrediction = await getCache(cacheKey);
+        if (cachedPrediction) {
+          return res.status(200).set(corsHeaders).json({ prediction: cachedPrediction, cached: true, source: 'redis' });
+        }
+      } catch (e) { console.warn("Redis check for prediction failed", e); }
     }
 
     const homeTeam = typeof match.homeTeam === 'object' ? match.homeTeam.name : match.homeTeam;
@@ -931,7 +976,10 @@ Return ONLY valid JSON (no markdown):
           else if (cleanedJsonStr.startsWith('```')) cleanedJsonStr = cleanedJsonStr.replace(/^```\n/, '').replace(/\n```$/, '');
 
           const predictionData = JSON.parse(cleanedJsonStr);
-          predictionCache[matchId] = { data: predictionData, timestamp: now, scoreHash: currentScoreHash };
+          // Save to Redis cache for future requests
+          if (hasRedis()) {
+            await setCache(cacheKey, predictionData, PREDICT_CACHE_DURATION);
+          }
 
           return res.status(200).set(corsHeaders).json({ prediction: predictionData, cached: false });
         } catch (e: any) {
@@ -944,22 +992,32 @@ Return ONLY valid JSON (no markdown):
 
   } catch (error: any) {
     console.error('Gemini Analysis Interrupted', error.message);
-    res.status(500).set(corsHeaders).json({ error: 'Gemini Analysis Interrupted', details: error.message });
+    const fallbackPrediction = {
+      analysis: "Our AI analyst is currently experiencing high demand. Tactical analysis is temporarily unavailable. Please try again in a few minutes.",
+      vulnerabilities: { home: "N/A", away: "N/A" },
+      keyMatchups: [],
+      winProbability: { home: 0, draw: 0, away: 0 },
+      suggestedScore: "?-?",
+      advisor: null
+    };
+    res.status(200).set(corsHeaders).json({ prediction: fallbackPrediction, cached: true, error: "AI_BUSY" });
   }
 });
 
 // --- 🎲 DYNAMIC AI PLAYER PROPS ENDPOINT ---
-let propsCache: { data: any; timestamp: number } | null = null;
-const PROPS_CACHE_DURATION = 4 * 60 * 60 * 1000; // Cache for 4 hours to save API limits
+const PROPS_CACHE_DURATION_SECONDS = 4 * 60 * 60; // Cache for 4 hours
 
 app.get('/api/player-props', checkMaintenance, async (_req, res) => {
   const corsHeaders = { 'Access-Control-Allow-Origin': '*' };
+  const cacheKey = 'player-props:daily';
 
   try {
-    const now = Date.now();
-    // Return cached props if they are fresh
-    if (propsCache && (now - propsCache.timestamp < PROPS_CACHE_DURATION)) {
-      return res.status(200).set(corsHeaders).json(propsCache.data);
+    // 1. Check Redis cache first
+    if (hasRedis()) {
+      const cachedProps = await getCache(cacheKey);
+      if (cachedProps) {
+        return res.status(200).set(corsHeaders).json(cachedProps);
+      }
     }
 
     const geminiClients = getGeminiClients();
@@ -970,7 +1028,7 @@ app.get('/api/player-props', checkMaintenance, async (_req, res) => {
       for (const modelName of modelsToTry) {
         try {
           const prompt = `Act as an expert football data analyst. Generate 3 exciting, highly analytical 'Player Props' (betting/fantasy projections) for today's biggest global football players (e.g., Haaland, Mbappe, Bellingham, Vinicius Jr).
-          
+
 Return ONLY a valid JSON array of 3 objects with this exact structure (no markdown, no backticks):
 [
   {
@@ -998,8 +1056,9 @@ Return ONLY a valid JSON array of 3 objects with this exact structure (no markdo
 
           const generatedProps = JSON.parse(cleanedJsonStr);
 
-          // Save to cache
-          propsCache = { data: generatedProps, timestamp: now };
+          if (hasRedis()) {
+            await setCache(cacheKey, generatedProps, PROPS_CACHE_DURATION_SECONDS);
+          }
 
           return res.status(200).set(corsHeaders).json(generatedProps);
         } catch (error: any) {
