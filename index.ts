@@ -265,12 +265,42 @@ function transformMatchRow(row: any, status: 'UPCOMING' | 'FINISHED' | 'SCHEDULE
   };
 }
 
-app.use('/api', (req, res, next) => {
-  if (req.path.startsWith('/login') || req.path.startsWith('/maintenance') || req.path.startsWith('/test-noti')) {
+// 🔒 1. SECURITY LAYER: API Protection Middleware
+const protectApi = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  // Allow public paths (non-API), login, maintenance, and test notifications to pass through without checks.
+  if (!req.path.startsWith('/api/') || req.path === '/api/login' || req.path.startsWith('/api/maintenance') || req.path === '/api/test-noti') {
     return next();
   }
-  checkMaintenance(req, res, next);
-});
+
+  const clientSecret = req.headers['x-app-secret'];
+  const origin = req.headers.origin;
+
+  // We'll get the secret directly from the .env file.
+  const APP_SECRET = process.env.APP_SECRET;
+
+  if (!APP_SECRET) {
+    console.error("CRITICAL: APP_SECRET is not set in environment variables.");
+    return res.status(500).json({ error: "Server Configuration Error" });
+  }
+
+  const allowedOrigins = ['https://e2match.vercel.app', 'http://localhost:3000', 'http://localhost:5173'];
+
+  // Rule 1: Check Browser Origin (For Website)
+  if (origin && allowedOrigins.includes(origin)) {
+    return next();
+  }
+
+  // Rule 2: Check Secret Key (For Mobile App)
+  if (clientSecret === APP_SECRET) {
+    return next();
+  }
+
+  console.warn(`Access Denied: Path='${req.path}', Origin='${origin}', Secret='${clientSecret ? '******' : 'none'}'`);
+  return res.status(403).json({ error: "Access Denied: Invalid App Secret or Origin." });
+};
+
+// Apply the security middleware to all routes.
+app.use(protectApi);
 
 // --- CENTRALIZED TEAM DATA MANAGEMENT ---
 const MANAGED_TEAMS = [
