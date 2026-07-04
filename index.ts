@@ -328,6 +328,8 @@ app.get('/api/teams', (_req, res) => {
   res.status(200).set(corsHeaders).json(MANAGED_TEAMS);
 });
 
+let inFlightTournamentsFetch: Promise<any[] | null> | null = null;
+
 app.get('/api/team-stats/:teamId', (req, res) => {
   const corsHeaders = { 'Access-Control-Allow-Origin': '*' };
   const teamId = req.params.teamId.toLowerCase();
@@ -348,16 +350,21 @@ app.get('/api/team-stats/:teamId', (req, res) => {
 });
 
 // --- CENTRALIZED TOURNAMENT MANAGEMENT ---
-const SUPPORTED_TOURNAMENTS = [
-  { name: 'Premier League', leagueId: '47' }, // English Premier League
-  { name: 'La Liga', leagueId: '48' }, // Spanish La Liga
-  { name: 'Champions League', leagueId: '16' }, // UEFA Champions League
-  { name: 'World Cup', leagueId: '7' }, // FIFA World Cup
+const SUPPORTED_TOURNAMENTS: { name: string, leagueId: string }[] = [
+  { name: 'Premier League', leagueId: 'PL' },
+  { name: 'Champions League', leagueId: 'CL' },
+  { name: 'World Cup', leagueId: 'WC' },
+  { name: 'La Liga', leagueId: 'PD' },
+  { name: 'Bundesliga', leagueId: 'BL1' },
+  { name: 'Serie A', leagueId: 'SA' },
+  { name: 'Ligue 1', leagueId: 'FL1' },
+  { name: 'European Championship', leagueId: 'EC' },
 ];
 
 app.get('/api/tournaments', async (_req, res) => {
   const corsHeaders = { 'Access-Control-Allow-Origin': '*' };
-  const activeTournamentsCacheKey = 'active_tournaments_list:v2';
+  // v3 due to new data source (football-data.org)
+  const activeTournamentsCacheKey = 'active_tournaments_list:v3';
 
   try {
     const cachedActiveTournaments = await getCache(activeTournamentsCacheKey);
@@ -366,16 +373,36 @@ app.get('/api/tournaments', async (_req, res) => {
       return res.status(200).set(corsHeaders).json(cachedActiveTournaments);
     }
 
-    console.log("Checking for active tournaments by fetching standings data...");
-    const activityChecks = SUPPORTED_TOURNAMENTS.map(async (tourn) => {
-      const standings = await fetchAndCacheStandings(tourn.leagueId);
-      // A tournament is "active" if its standings data is not empty and at least one team has played a match.
-      const isActive = standings ? standings.some(team => team.played > 0) : false;
-      return { ...tourn, isActive };
-    });
+    // Prevent dog-piling on this expensive, rate-limited endpoint.
+    if (inFlightTournamentsFetch) {
+      console.log("Waiting for in-flight tournaments fetch to complete...");
+      const result = await inFlightTournamentsFetch;
+      return res.status(200).set(corsHeaders).json(result);
+    }
 
-    const results = await Promise.all(activityChecks);
-    const activeTournaments = results.filter(r => r.isActive).map(({ isActive, ...rest }) => rest);
+    const fetchPromise = (async () => {
+      // Fetch standings sequentially to respect the football-data.org API rate limit (10 calls/minute).
+      console.log("Checking for active tournaments by fetching standings data sequentially...");
+      const results = [];
+      for (const tourn of SUPPORTED_TOURNAMENTS) {
+        const standings = await fetchAndCacheStandings(tourn.leagueId);
+        // A tournament is "active" if its standings data is not empty and at least one team has played a match.
+        const isActive = standings ? standings.some(team => team.played > 0) : false;
+        results.push({ ...tourn, isActive });
+        // Add a 7-second delay between requests. 10 calls/min limit = 1 call every 6s. This is safer.
+        await new Promise(resolve => setTimeout(resolve, 7000));
+      }
+      return results.filter(r => r.isActive).map(({ isActive, ...rest }) => rest);
+    })();
+
+    inFlightTournamentsFetch = fetchPromise;
+
+    let activeTournaments: any[];
+    try {
+      activeTournaments = await fetchPromise;
+    } finally {
+      inFlightTournamentsFetch = null; // Clear the lock after completion
+    }
 
     // Always include the World Cup in the list, as the frontend has a static data fallback for it.
     const worldCup = SUPPORTED_TOURNAMENTS.find(t => t.name === 'World Cup');
@@ -384,7 +411,7 @@ app.get('/api/tournaments', async (_req, res) => {
     }
 
     // Cache the list of active tournaments for 8 hours to avoid repeated checks.
-    await setCache(activeTournamentsCacheKey, activeTournaments, 28800);
+    await setCache(activeTournamentsCacheKey, activeTournaments, 14400); // Cache for 4 hours
 
     res.status(200).set(corsHeaders).json(activeTournaments);
 
@@ -397,6 +424,8 @@ app.get('/api/tournaments', async (_req, res) => {
 
 // --- REAL API LOGIC REACTIVATED ---
 
+const inFlightStandingsFetches = new Map<string, Promise<any[] | null>>();
+
 /**
  * A centralized function to fetch, parse, and cache standings for a given league ID.
  * This avoids code duplication between the /standings and /tournaments endpoints.
@@ -406,67 +435,89 @@ app.get('/api/tournaments', async (_req, res) => {
 async function fetchAndCacheStandings(leagueId: string): Promise<any[] | null> {
   const apiKey = process.env.RAPID_API_KEY_STANDINGS;
   if (!apiKey) {
-    console.error("Standings API key (RAPID_API_KEY_STANDINGS) is not configured.");
+    console.error("Standings API key (RAPID_API_KEY_STANDINGS) is not configured for football-data.org.");
     return null;
   }
 
-  const cacheKey = `standings_freeapi:${leagueId}`;
+  const cacheKey = `standings_footballdata:${leagueId}`;
 
   // 1. Check Redis Cache
   const cachedData = await getCache(cacheKey);
   if (cachedData) {
+    console.log(`Serving standings for ${leagueId} from cache.`);
     return cachedData;
   }
 
-  // 2. Fetch from free-api-live-football-data
-  console.log(`Fetching new standings for League: ${leagueId}...`);
-  const url = `https://free-api-live-football-data.p.rapidapi.com/football-get-standing-all?leagueid=${leagueId}`;
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Content-Type': 'application/json',
-  };
+  // 2. Check for in-flight request to prevent race conditions (dog-pile effect)
+  if (inFlightStandingsFetches.has(cacheKey)) {
+    console.log(`Waiting for in-flight standings fetch for ${leagueId}...`);
+    return inFlightStandingsFetches.get(cacheKey)!;
+  }
 
-  try {
+  // 3. Fetch from football-data.org
+  const fetchPromise = (async (): Promise<any[] | null> => {
+    console.log(`Fetching new standings for League Code: ${leagueId} from football-data.org...`);
+    const url = `https://api.football-data.org/v4/competitions/${leagueId}/standings`;
+
     const response = await fetch(url, {
       headers: {
-        'x-rapidapi-key': apiKey,
-        'x-rapidapi-host': 'free-api-live-football-data.p.rapidapi.com',
-        'Content-Type': 'application/json'
+        'X-Auth-Token': apiKey,
       }
     });
 
     if (!response.ok) {
-      console.error(`Standings API for league ${leagueId} returned ${response.status}`);
+      const errorBody = await response.text();
+      console.error(`football-data.org API for league ${leagueId} returned ${response.status}: ${errorBody}`);
+      // Cache an empty array for a shorter period on error to prevent hammering the API
+      await setCache(cacheKey, [], 600); // Cache error state for 10 minutes
       return null; // Return null on hard API errors
     }
 
     const data = await response.json();
 
-    if (data.status !== 'success' || !data.response?.standing || data.response.standing.length === 0) {
+    if (!data.standings || data.standings.length === 0) {
+      console.log(`No standings data available for league ${leagueId}. Caching empty result.`);
       await setCache(cacheKey, [], 3600); // Cache empty result for 1 hour for off-season leagues
       return [];
     }
 
-    const flatStandings = data.response.standing.map((row: any) => {
-      const [goalsFor, goalsAgainst] = (row.scoresStr || "0-0").split('-').map(Number);
-      const normalizedApiTeamName = normalizeTeamName(row.name);
-      const matchedTeam = MANAGED_TEAMS.find(t => normalizeTeamName(t.name) === normalizedApiTeamName);
-      const logo = matchedTeam ? matchedTeam.logo : '⚽';
-
-      return {
-        rank: row.idx, teamName: row.name, logo, played: row.played, win: row.wins,
-        draw: row.draws, lose: row.losses, goalsFor, goalsAgainst, gd: row.goalConDiff,
-        points: row.pts, group: 'League Table'
-      };
+    // The response can contain multiple standings (e.g., home, away, total) and multiple groups (e.g., World Cup).
+    // We want to flatten all 'TOTAL' type standings.
+    const allStandings = data.standings.flatMap((standingGroup: any) => {
+      if (standingGroup.type === 'TOTAL' && standingGroup.table) {
+        return standingGroup.table.map((row: any) => ({
+          rank: row.position,
+          teamName: row.team.name,
+          logo: row.team.crest, // Use the direct logo URL from the API
+          played: row.playedGames,
+          win: row.won,
+          draw: row.draw,
+          lose: row.lost,
+          goalsFor: row.goalsFor,
+          goalsAgainst: row.goalsAgainst,
+          gd: row.goalDifference,
+          points: row.points,
+          group: standingGroup.group || 'League Table' // Use the group name from the API
+        }));
+      }
+      return []; // Return empty for non-TOTAL types
     });
 
-    await setCache(cacheKey, flatStandings, 28800); // Cache for 8 hours
-    return flatStandings;
+    await setCache(cacheKey, allStandings, 14400); // Cache for 4 hours
+    return allStandings;
 
-  } catch (error: any) {
+  })().catch((error: any) => {
     console.error(`Failed to fetch and cache standings for league ${leagueId}:`, error.message);
     return null; // Return null on exception
-  }
+  }).finally(() => {
+    // 4. Remove from in-flight map when done
+    inFlightStandingsFetches.delete(cacheKey);
+  });
+
+  // Store the promise in the in-flight map
+  inFlightStandingsFetches.set(cacheKey, fetchPromise);
+
+  return fetchPromise;
 }
 
 // ✅ RAPID API ACTIVATED
@@ -657,6 +708,8 @@ app.get('/api/standings', async (req, res) => {
   res.status(200).set(corsHeaders).json({ standings: standingsData });
 });
 
+const UPCOMING_BACKOFF_KEY = 'upcoming-matches:backoff-until';
+
 app.get('/api/upcoming-matches', checkMaintenance, async (_req, res) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -673,14 +726,25 @@ app.get('/api/upcoming-matches', checkMaintenance, async (_req, res) => {
       return res.status(200).set(corsHeaders).json({ matches: cachedData.data, cached: true });
     }
 
-    console.log('Fetching new Daily Matches from Betminer API...');
-    let apiKey = process.env.RAPID_API_KEY_BETMINER;
-    if (!apiKey) {
-      console.warn("WARNING: RAPID_API_KEY_BETMINER is missing. Falling back to RAPID_API_KEY_STANDINGS. This may not work if the keys are for different API subscriptions.");
-      apiKey = process.env.RAPID_API_KEY_STANDINGS;
+    // Check for backoff before proceeding to avoid hitting a rate-limited API.
+    const backoffUntil = await getCache(UPCOMING_BACKOFF_KEY) || 0;
+    if (Date.now() < backoffUntil) {
+      console.warn(`[Rate Limit] Upcoming matches fetch is in backoff. Will retry after ${new Date(backoffUntil).toISOString()}`);
+      // Return cached data if available, or an empty array with a warning.
+      const staleData = cachedData?.data || [];
+      return res.status(200).set(corsHeaders).json({
+        matches: staleData,
+        cached: true,
+        warning: 'API rate limit active. Serving stale data.'
+      });
     }
 
-    if (!apiKey) throw new Error('No valid API key found for Betminer (checked RAPID_API_KEY_BETMINER and RAPID_API_KEY_STANDINGS).');
+    console.log('Fetching new Daily Matches from Betminer API...');
+    const apiKey = process.env.RAPID_API_KEY_UPCOMING;
+
+    if (!apiKey) {
+      throw new Error('Upcoming Matches API key (RAPID_API_KEY_UPCOMING) is not configured.');
+    }
 
     const today = new Date().toISOString().split('T')[0];
     const url = `https://betminer.p.rapidapi.com/bm/v3/edge-analysis/${today}`;
@@ -693,7 +757,18 @@ app.get('/api/upcoming-matches', checkMaintenance, async (_req, res) => {
       }
     });
 
-    if (!response.ok) throw new Error(`Upcoming Matches API returned ${response.status}`);
+    if (!response.ok) {
+      if (response.status === 429) {
+        // The API is rate-limited. Set a 1-hour backoff period to prevent further requests.
+        const backoffDuration = 60 * 60 * 1000; // 1 hour
+        const newBackoffUntil = Date.now() + backoffDuration;
+        await setCache(UPCOMING_BACKOFF_KEY, newBackoffUntil, 3600); // Cache for 1 hour
+        console.warn(`[429] Upcoming Matches API rate limited. Backing off for 1 hour.`);
+      }
+      throw new Error(`Upcoming Matches API returned ${response.status}`);
+    }
+
+    await setCache(UPCOMING_BACKOFF_KEY, 0, 1); // Clear backoff on a successful request.
 
     const data = await response.json();
 
@@ -747,7 +822,7 @@ app.get('/api/upcoming-matches', checkMaintenance, async (_req, res) => {
     console.error('Upcoming matches error:', error.message);
     res.status(200).set(corsHeaders).json({
       matches: [],
-      warning: 'Could not fetch upcoming matches'
+      warning: `Could not fetch upcoming matches. ${error.message}`
     });
   }
 });
@@ -789,6 +864,54 @@ app.get('/api/completed-matches', checkMaintenance, async (_req, res) => {
     res.status(200).set(corsHeaders).json({
       matches: [],
       warning: 'Could not fetch completed matches'
+    });
+  }
+});
+
+app.get('/api/db-matches', async (_req, res) => {
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Content-Type': 'application/json',
+    'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600'
+  };
+
+  if (!process.env.DB_URL) {
+    return res.status(200).set(corsHeaders).json({
+      matches: [],
+      warning: 'DB not configured'
+    });
+  }
+
+  try {
+    const client = await pool.connect();
+    const result = await client.query(
+      'SELECT * FROM world_cup_matches ORDER BY match_date ASC, match_time ASC'
+    );
+    client.release();
+
+    const dynamicMatches = await Promise.all(result.rows.map(async (row) => {
+      // The status is derived from the 'db_status' column in the database.
+      const status = (row.db_status || 'SCHEDULED') as 'UPCOMING' | 'FINISHED' | 'SCHEDULED';
+      const transformed = transformMatchRow(row, status);
+
+      const homeTeamName = transformed.homeTeam.name;
+      const awayTeamName = transformed.awayTeam.name;
+
+      // This logic is similar to the /completed-matches endpoint.
+      if (transformed.status === 'FINISHED' && !transformed.youtubeHighlightId && process.env.YOUTUBE_API_KEY) {
+        const ytId = await fetchAndSaveHighlight(row.id, homeTeamName, awayTeamName);
+        if (ytId) transformed.youtubeHighlightId = ytId;
+      }
+
+      return transformed;
+    }));
+
+    res.status(200).set(corsHeaders).json({ matches: dynamicMatches });
+  } catch (error: any) {
+    console.error('Database Error (/api/db-matches):', error.message);
+    res.status(200).set(corsHeaders).json({
+      matches: [],
+      warning: 'Failed to fetch matches from DB'
     });
   }
 });

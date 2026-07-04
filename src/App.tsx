@@ -896,13 +896,20 @@ function App() {
                     <p className="text-xs text-slate-400 leading-relaxed max-w-md">{standingsError}</p>
                   </div>
                 ) : selectedTournament ? (() => {
-                  const currentStandings = dynamicStandings[selectedTournament.name];
+                  let currentStandings = dynamicStandings[selectedTournament.name];
                   const seasonHasStarted = hasSeasonStarted(currentStandings);
+
+                  // If the API returns data for the World Cup but no matches have been played,
+                  // override it with the static fallback data for a better user experience.
+                  if (selectedTournament.name === 'World Cup' && currentStandings && !seasonHasStarted) {
+                    console.log("Current World Cup season hasn't started. Displaying static 2026 projection data instead of empty table.");
+                    currentStandings = WORLD_CUP_STANDINGS;
+                  }
 
                   if (currentStandings && currentStandings.length > 0) {
                     return (
                       <>
-                        {!seasonHasStarted && (
+                        {!seasonHasStarted && selectedTournament.name !== 'World Cup' && (
                           <div className="bg-blue-500/10 border border-blue-400/20 rounded-xl p-4 text-center text-sm text-blue-300 mb-4 shadow-inner">
                             The season has not started yet. All teams are on 0 points.
                           </div>
