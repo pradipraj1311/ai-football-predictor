@@ -274,6 +274,7 @@ const protectApi = (req: express.Request, res: express.Response, next: express.N
 
   const clientSecret = req.headers['x-app-secret'];
   const origin = req.headers.origin;
+  const secFetchSite = req.headers['sec-fetch-site'];
 
   // We'll get the secret directly from the .env file.
   const APP_SECRET = process.env.APP_SECRET;
@@ -284,18 +285,28 @@ const protectApi = (req: express.Request, res: express.Response, next: express.N
   }
 
   const allowedOrigins = ['https://e2match.vercel.app', 'http://localhost:3000', 'http://localhost:5173'];
+  // Dynamically allow Vercel preview deployments
+  if (process.env.VERCEL_URL) {
+    allowedOrigins.push(`https://${process.env.VERCEL_URL}`);
+  }
 
-  // Rule 1: Check Browser Origin (For Website)
+  // Rule 1: Allow same-origin browser requests.
+  // This is safer than checking for a missing Origin header, which can be spoofed by non-browsers.
+  if (secFetchSite === 'same-origin') {
+    return next();
+  }
+
+  // Rule 2: Check cross-origin from allowed origins (for dev, etc.)
   if (origin && allowedOrigins.includes(origin)) {
     return next();
   }
 
-  // Rule 2: Check Secret Key (For Mobile App)
+  // Rule 3: Check Secret Key (For Mobile App / other clients)
   if (clientSecret === APP_SECRET) {
     return next();
   }
 
-  console.warn(`Access Denied: Path='${req.path}', Origin='${origin}', Secret='${clientSecret ? '******' : 'none'}'`);
+  console.warn(`Access Denied: Path='${req.path}', Origin='${origin}', Sec-Fetch-Site='${secFetchSite}', Secret='${clientSecret ? '******' : 'none'}'`);
   return res.status(403).json({ error: "Access Denied: Invalid App Secret or Origin." });
 };
 
