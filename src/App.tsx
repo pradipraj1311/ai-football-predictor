@@ -795,7 +795,12 @@ function App() {
                           onClick={() => setResultFilter(teamName || '')}
                           className={`shrink-0 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border flex items-center gap-1.5 ${resultFilter.toLowerCase() === (teamName || '').toLowerCase() ? 'bg-indigo-600 text-white border-indigo-500 shadow-[0_0_15px_rgba(79,70,229,0.3)]' : 'bg-[#0B1121] text-slate-400 border-white/5 hover:bg-white/5'}`}
                         >
-                          <span className="text-sm">{teamLogo || '⚽'}</span> {teamCode || 'UNK'}
+                          {teamLogo?.startsWith('http') ? (
+                            <img src={teamLogo} alt={teamName} className="w-4 h-4 object-contain" />
+                          ) : (
+                            <span className="text-sm">{teamLogo || '⚽'}</span>
+                          )}
+                          {teamCode || 'UNK'}
                         </button>
                       );
                     })}
