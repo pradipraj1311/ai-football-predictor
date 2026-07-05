@@ -832,20 +832,21 @@ app.get('/api/upcoming-matches', checkMaintenance, async (_req, res) => {
         status: status,
         time: kickoffDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) || 'TBD',
         date: kickoffDate.toISOString().split('T')[0],
-        homeScore: m.score?.home ?? null,
-        awayScore: m.score?.away ?? null,
+        // FORCE NULL FOR UPCOMING MATCHES
+        homeScore: status === 'UPCOMING' ? null : (m.score?.home ?? null),
+        awayScore: status === 'UPCOMING' ? null : (m.score?.away ?? null),
         homeTeam: {
           id: String(m.home_team?.id),
           name: m.home_team?.name || 'Home',
           code: (m.home_team?.name || 'HOM').substring(0, 3).toUpperCase(),
-          logo: m.home_team?.logo || '⚽', // Now using real logo URL
+          logo: m.home_team?.logo || '⚽',
           form: m.form?.home?.split('') || []
         },
         awayTeam: {
           id: String(m.away_team?.id),
           name: m.away_team?.name || 'Away',
           code: (m.away_team?.name || 'AWY').substring(0, 3).toUpperCase(),
-          logo: m.away_team?.logo || '⚽', // Now using real logo URL
+          logo: m.away_team?.logo || '⚽',
           form: m.form?.away?.split('') || []
         },
       };

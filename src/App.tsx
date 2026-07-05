@@ -203,17 +203,32 @@ function App() {
   // Fetch the list of supported tournaments from the backend on mount
   useEffect(() => {
     const loadTournaments = async () => {
+      const defaultLeagues = [
+        { name: 'Champions League', leagueId: 'CL' },
+        { name: 'World Cup', leagueId: 'WC' },
+        { name: 'Premier League', leagueId: 'PL' },
+        { name: 'La Liga', leagueId: 'PD' },
+        { name: 'Bundesliga', leagueId: 'BL1' },
+        { name: 'Serie A', leagueId: 'SA' },
+        { name: 'Ligue 1', leagueId: 'FL1' },
+        { name: 'European Championship', leagueId: 'EC' }
+      ];
+
       try {
         const response = await fetch('/api/tournaments');
         if (response.ok) {
           const data: Tournament[] = await response.json();
           if (data && data.length > 0) {
             setTournaments(data);
-            // Defer selection until the 'Table' tab is actively clicked to avoid unnecessary initial fetches.
+          } else {
+            setTournaments(defaultLeagues);
           }
+        } else {
+          setTournaments(defaultLeagues);
         }
       } catch (error) {
         console.error("Error fetching tournaments data:", error);
+        setTournaments(defaultLeagues);
       }
     };
     loadTournaments();
@@ -408,14 +423,21 @@ function App() {
           }
         }
 
-        // Fetch upcoming matches from the new dedicated API, max 3 times per day
+        // Fetch upcoming matches from the new dedicated API
         const UPCOMING_API_COOLDOWN = 8 * 60 * 60 * 1000; // 8 hours
         if (now - lastUpcomingFetchTimeRef.current > UPCOMING_API_COOLDOWN) {
           try {
             const upcomingRes = await fetch('/api/upcoming-matches');
             if (upcomingRes.ok) {
               const upcomingData = await upcomingRes.json();
-              upcomingMatchesApiRef.current = upcomingData.matches || [];
+              // Sanitize: Force score to null for UPCOMING matches so UI shows '-' instead of '0 - 0'
+              const sanitizedUpcoming = (upcomingData.matches || []).map((m: Match) => {
+                if (m.status === 'UPCOMING') {
+                  return { ...m, homeScore: null, awayScore: null };
+                }
+                return m;
+              });
+              upcomingMatchesApiRef.current = sanitizedUpcoming;
               lastUpcomingFetchTimeRef.current = now;
             }
           } catch (e) { console.warn("Upcoming Matches API Fetch network error:", e); }
@@ -874,7 +896,13 @@ function App() {
                 (teams && teams.length > 0) ? teams.map((team, index) => (
                   <div key={team.id} onClick={() => setSelectedTeam(team)} className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all animate-fade-in-up ${selectedTeam?.id === team.id ? 'bg-gradient-to-r from-indigo-950/40 to-[#0B1121] border-indigo-500/50' : 'bg-[#0B1121] border-white/5 hover:border-indigo-500/30'}`} style={{ animationDelay: `${index * 30}ms` }}>
                     <div className="flex items-center gap-3">
-                      <span className="text-xl">{team.logo || '⚽'}</span>
+                      <span className="flex items-center justify-center w-8 h-8">
+                        {team.logo?.startsWith('http') ? (
+                          <img src={team.logo} alt={team.name} className="max-w-full max-h-full object-contain" />
+                        ) : (
+                          <span className="text-xl">{team.logo || '⚽'}</span>
+                        )}
+                      </span>
                       <span className="text-xs font-bold text-white">{team.name}</span>
                     </div>
                     <span className="text-[9px] font-mono font-bold bg-white/5 border border-white/10 text-slate-400 px-1.5 py-0.5 rounded">{team.code}</span>
@@ -972,9 +1000,15 @@ function App() {
                     <span className={`text-[10px] font-black px-2.5 py-0.5 rounded border ${selectedMatch.status === 'LIVE' ? 'bg-red-500/10 text-red-400 border-red-500/20 animate-pulse' : selectedMatch.status === 'UPCOMING' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 'bg-white/5 text-slate-400 border-white/10'}`}>{selectedMatch.status}</span>
                   </div>
                   <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center justify-center gap-3 w-1/3 text-center">
-                      <span className="text-4xl">{selectedMatch.homeTeam?.logo || '⚽'}</span>
-                      <span className="text-lg font-black text-white">{selectedMatch.homeTeam?.name}</span>
+                    <div className="flex flex-col items-center justify-center gap-3 w-1/3 text-center">
+                      <div className="h-12 flex items-center justify-center">
+                        {selectedMatch.homeTeam?.logo?.startsWith('http') ? (
+                          <img src={selectedMatch.homeTeam.logo} alt={selectedMatch.homeTeam.name} className="max-h-12 object-contain mx-auto" />
+                        ) : (
+                          <span className="text-4xl">{selectedMatch.homeTeam?.logo || '⚽'}</span>
+                        )}
+                      </div>
+                      <span className="text-lg font-black text-white leading-tight">{selectedMatch.homeTeam?.name}</span>
                     </div>
                     <div className="flex flex-col items-center justify-center w-1/3">
                       {selectedMatch.status === 'LIVE' || selectedMatch.status === 'FINISHED' ? (
@@ -985,9 +1019,15 @@ function App() {
                         <div className="text-xl font-mono font-black text-indigo-400 bg-indigo-500/5 border border-indigo-500/10 px-4 py-1.5 rounded-xl tracking-wider">{selectedMatch.time}</div>
                       )}
                     </div>
-                    <div className="flex items-center justify-center gap-3 w-1/3 text-center">
-                      <span className="text-4xl">{selectedMatch.awayTeam?.logo || '⚽'}</span>
-                      <span className="text-lg font-black text-white">{selectedMatch.awayTeam?.name}</span>
+                    <div className="flex flex-col items-center justify-center gap-3 w-1/3 text-center">
+                      <div className="h-12 flex items-center justify-center">
+                        {selectedMatch.awayTeam?.logo?.startsWith('http') ? (
+                          <img src={selectedMatch.awayTeam.logo} alt={selectedMatch.awayTeam.name} className="max-h-12 object-contain mx-auto" />
+                        ) : (
+                          <span className="text-4xl">{selectedMatch.awayTeam?.logo || '⚽'}</span>
+                        )}
+                      </div>
+                      <span className="text-lg font-black text-white leading-tight">{selectedMatch.awayTeam?.name}</span>
                     </div>
                   </div>
                   <div className="flex gap-4 justify-center mt-6 pt-6 border-t border-white/5">

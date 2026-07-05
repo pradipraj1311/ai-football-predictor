@@ -47,7 +47,13 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, isSelected, onSelec
         {/* Home Team Row */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="text-xl">{match.homeTeam?.logo || '⚽'}</span>
+            <span className="flex items-center justify-center w-6 h-6">
+              {match.homeTeam?.logo?.startsWith('http') ? (
+                <img src={match.homeTeam.logo} alt={match.homeTeam.name} className="max-w-full max-h-full object-contain" />
+              ) : (
+                <span className="text-xl">{match.homeTeam?.logo || '⚽'}</span>
+              )}
+            </span>
             <span className={`text-sm font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>{match.homeTeam?.name || 'Home'}</span>
           </div>
           <span className="text-base font-black text-white font-mono">{match.homeScore ?? '-'}</span>
@@ -56,7 +62,13 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, isSelected, onSelec
         {/* Away Team Row */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="text-xl">{match.awayTeam?.logo || '⚽'}</span>
+            <span className="flex items-center justify-center w-6 h-6">
+              {match.awayTeam?.logo?.startsWith('http') ? (
+                <img src={match.awayTeam.logo} alt={match.awayTeam.name} className="max-w-full max-h-full object-contain" />
+              ) : (
+                <span className="text-xl">{match.awayTeam?.logo || '⚽'}</span>
+              )}
+            </span>
             <span className={`text-sm font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>{match.awayTeam?.name || 'Away'}</span>
           </div>
           <span className="text-base font-black text-white font-mono">{match.awayScore ?? '-'}</span>
